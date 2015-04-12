@@ -154,7 +154,7 @@ def label_contours(contour_data, annot_data, olap_thresh):
         
         # get segment of ground truth matching this contour
         gt_segment = annot_data[annot_data['time'] >= times[0]]
-        gt_segment = gt_segment[gt_segment['Time'] <= times[-1]]
+        gt_segment = gt_segment[gt_segment['time'] <= times[-1]]
         
         # compute metrics
         res = mir_eval.melody.evaluate(gt_segment['time'].values, \
@@ -208,4 +208,5 @@ def find_overlapping_contours(contour_data, annot_data):
 
     return olap_contours
 
-
+def join_features(features_list):
+    pass
