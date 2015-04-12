@@ -209,4 +209,21 @@ def find_overlapping_contours(contour_data, annot_data):
     return olap_contours
 
 def join_features(features_list):
-    pass
+    """ Merge features for a multiple track into a single DataFrame
+
+    Parameters
+    ----------
+    features_list : list of DataFrames
+        List of Pandas data frames with labeled features.
+
+    Returns
+    -------
+    all_features : DataFrame
+        Merged feature data.
+    """
+    all_features = pd.concat(features_list, ignore_index=False)
+    return all_features
+
+
+
+
