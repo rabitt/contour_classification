@@ -8,7 +8,7 @@ sns.set()
 import mir_eval
 
 def load_contour_data(fpath):
-    """ Load contour data from vamp output csv file.     
+    """ Load contour data from vamp output csv file.
 
     Parameters
     ----------
@@ -20,14 +20,14 @@ def load_contour_data(fpath):
     contour_data : DataFrame
         Pandas data frame with all contour data.
     """
-    contour_data = pd.read_csv(fpath, header=None, index_col=None, \
+    contour_data = pd.read_csv(fpath, header=None, index_col=None,
                                delimiter=',')
-    del contour_data[0] # all zeros
-    del contour_data[1] # just an unnecessary  index
+    del contour_data[0]  # all zeros
+    del contour_data[1]  # just an unnecessary  index
     headers = contour_data.columns.values.astype('str')
-    headers[0:12] = ['onset', 'offset', 'duration', 'pitch mean', 'pitch std',\
-                    'salience mean', 'salience std', 'salience tot', \
-                    'vibrato', 'vib rate', 'vib extent', 'vib coverage']
+    headers[0:12] = ['onset', 'offset', 'duration', 'pitch mean', 'pitch std',
+                     'salience mean', 'salience std', 'salience tot',
+                     'vibrato', 'vib rate', 'vib extent', 'vib coverage']
     contour_data.columns = headers
     return contour_data
 
@@ -47,7 +47,7 @@ def features_from_contour_data(contour_data):
         Pandas data frame with contour feature data.
     """
     features = contour_data.iloc[:, 2:12]
-    features['labels'] = -1 # all labels are unset
+    features['labels'] = -1  # all labels are unset
     return features
 
 
@@ -89,7 +89,7 @@ def load_annotation(fpath):
     annot_data : DataFrame
         Pandas data frame with all annotation data.
     """
-    annot_data = pd.read_csv(fpath, parse_dates=True, \
+    annot_data = pd.read_csv(fpath, parse_dates=True,
                              index_col=False, header=None)
     annot_data.columns = ['time', 'f0']
 
@@ -117,11 +117,11 @@ def make_coverage_plot(contour_data, annot_data):
         times = times[~np.isnan(times)]
         freqs = freqs[~np.isnan(freqs)]
         plt.plot(times, freqs, '.r')
-    plt.plot(annot_data['time'], annot_data['f0'], '.g')
+    plt.plot(annot_data['time'], annot_data['f0'], ',g')
     plt.show()
 
 
-def label_contours(contour_data, annot_data, olap_thresh):
+def label_contours(contour_data, annot_data, olap_thresh, regression=False):
     """ Assign labels to contours based on annotation.
     Contours with at least olap_thresh overlap with annotation
     are labeled as positive examples. Otherwise negative.
@@ -147,23 +147,26 @@ def label_contours(contour_data, annot_data, olap_thresh):
         row_idx = times[0]
         times = times[1].values
         freqs = freqs[1].values
-        
+
         # remove trailing NaNs
         times = times[~np.isnan(times)]
         freqs = freqs[~np.isnan(freqs)]
-        
+
         # get segment of ground truth matching this contour
         gt_segment = annot_data[annot_data['time'] >= times[0]]
         gt_segment = gt_segment[gt_segment['time'] <= times[-1]]
-        
+
         # compute metrics
-        res = mir_eval.melody.evaluate(gt_segment['time'].values, \
+        res = mir_eval.melody.evaluate(gt_segment['time'].values,
                                        gt_segment['f0'].values, times, freqs)
 
-        if res['Overall Accuracy'] >= olap_thresh:
-            features.ix[row_idx, 'labels'] = 1 # melody contour
+        if not regression:
+            if res['Overall Accuracy'] >= olap_thresh:
+                features.ix[row_idx, 'labels'] = 1  # melody contour
+            else:
+                features.ix[row_idx, 'labels'] = 0  # non-melody contour
         else:
-            features.ix[row_idx, 'labels'] = 0 # non-melody contour
+            features.ix[row_idx, 'labels'] = res['Overall Accuracy']
 
     return features
 
@@ -191,15 +194,15 @@ def find_overlapping_contours(contour_data, annot_data):
         row_idx = times[0]
         times = times[1].values
         freqs = freqs[1].values
-        
+
         # remove trailing NaNs
         times = times[~np.isnan(times)]
         freqs = freqs[~np.isnan(freqs)]
-        
+
         # get segment of ground truth matching this contour
         gt_segment = annot_data[annot_data['time'] >= times[0]]
         gt_segment = gt_segment[gt_segment['Time'] <= times[-1]]
-        
+
         # compute metrics
         res = mir_eval.melody.evaluate(gt_segment['time'].values, \
                                        gt_segment['f0'].values, times, freqs)
