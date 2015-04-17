@@ -5,6 +5,15 @@ import numpy as np
 import os
 
 def create_splits():
+    """ Split MedleyDB into train/test splits.
+
+    Returns
+    -------
+    mdb_files : list
+        List of sorted medleydb files.
+    splitter : iterator
+        iterator of train/test indices.
+    """
     index = json.load(open('medley_artist_index.json'))
 
     mdb_files = []
@@ -27,6 +36,22 @@ def create_splits():
 
 
 def get_data_files(track, meltype=1):
+    """ Load all necessary data for a given track and melody type.
+
+    Parameters
+    ----------
+    track : str
+        Track identifier.
+    meltype : int
+        Melody annotation type. One of [1, 2, 3]
+
+    Returns
+    -------
+    cdat : DataFrame
+        Pandas DataFrame of contour data.
+    adat : DataFrame
+        Pandas DataFrame of annotation data.
+    """
     contour_suffix = \
         "MIX_vamp_melodia-contours_melodia-contours_contoursall.csv"
     contours_path = "melodia_contours"
@@ -45,3 +70,27 @@ def get_data_files(track, meltype=1):
 
     return cdat, adat
 
+
+def contour_probs(clf, feat_data, contour_data):
+    """ Compute classifier probabilities for contours.
+
+    Parameters
+    ----------
+    clf : scikit-learn classifier
+        Binary classifier.
+    feat_data : DataFrame
+        DataFrame with features.
+    contour_data : DataFrame
+        DataFrame with contour information.
+
+    Returns
+    -------
+    all_features : DataFrame
+        Merged feature data.
+    """
+    contour_data['mel_prob'] = -1
+    X, Y = pd_to_sklearn(feat_data)
+    probs = clf.predict_proba(X)
+    mel_probs = [p[1] for p in probs]
+    contour_data['mel_prob'] = mel_probs
+    return contour_data

@@ -161,9 +161,7 @@ def make_coverage_plot(contour_data, annot_data, contour_data2=None):
 
 
 def contour_overlap(contour_data, annot_data):
-    """ Compute contours based on annotation.
-    Contours with at least olap_thresh overlap with annotation
-    are labeled as positive examples. Otherwise negative.
+    """ Compute percentage of overlap of each contour with annotation.
 
     Parameters
     ----------
@@ -171,8 +169,6 @@ def contour_overlap(contour_data, annot_data):
         Pandas data frame with all contour data.
     annot_data : DataFrame
         Pandas data frame with all annotation data.
-    olap_thresh : float
-        Overlap threshold for positive examples
 
     Returns
     -------
