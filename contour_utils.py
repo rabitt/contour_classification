@@ -145,7 +145,7 @@ def make_coverage_plot(contour_data, annot_data, contour_data2=None):
             freqs = freqs[1].values
             times = times[~np.isnan(times)]
             freqs = freqs[~np.isnan(freqs)]
-            plt.plot(times, freqs, '.c', zorder=1)
+            plt.plot(times, freqs, '.c')
 
     c_times, c_freqs, _ = contours_from_contour_data(contour_data)
     plt.figure()
@@ -154,9 +154,9 @@ def make_coverage_plot(contour_data, annot_data, contour_data2=None):
         freqs = freqs[1].values
         times = times[~np.isnan(times)]
         freqs = freqs[~np.isnan(freqs)]
-        plt.plot(times, freqs, '.r', zorder=2)
+        plt.plot(times, freqs, '.r')
 
-    plt.plot(annot_data['time'], annot_data['f0'], '+k', zorder=3)
+    plt.plot(annot_data['time'], annot_data['f0'], '.k')
     plt.show()
 
 
@@ -256,12 +256,13 @@ def find_overlapping_contours(contour_data, annot_data):
         gt_segment = gt_segment[gt_segment['Time'] <= times[-1]]
 
         # compute metrics
-        res = mir_eval.melody.evaluate(gt_segment['time'].values, \
+        res = mir_eval.melody.evaluate(gt_segment['time'].values,
                                        gt_segment['f0'].values, times, freqs)
         if res['Raw Pitch Accuracy'] == 0:
             olap_contours.drop(row_idx, inplace=True)
 
     return olap_contours
+
 
 def join_features(features_list):
     """ Merge features for a multiple track into a single DataFrame
@@ -281,7 +282,7 @@ def join_features(features_list):
 
 
 def pd_to_sklearn(features):
-    """ Convert pandas data frame to sklearn style features and labels 
+    """ Convert pandas data frame to sklearn style features and labels
 
     Parameters
     ----------
@@ -298,5 +299,4 @@ def pd_to_sklearn(features):
     X = np.array(features.iloc[:, 0:10])
     Y = np.array(features['labels'])
     return X, Y
-
 
