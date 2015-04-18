@@ -7,8 +7,10 @@ import seaborn as sns
 sns.set()
 import mir_eval
 
-def load_contour_data(fpath):
+
+def load_contour_data(fpath, normalize=True):
     """ Load contour data from vamp output csv file.
+    Initializes DataFrame to have all future columns.
 
     Parameters
     ----------
@@ -29,11 +31,21 @@ def load_contour_data(fpath):
                      'salience mean', 'salience std', 'salience tot',
                      'vibrato', 'vib rate', 'vib extent', 'vib coverage']
     contour_data.columns = headers
+    contour_data.num_end_cols = 0
+    contour_data['overlap'] = -1  # overlaps are unset
+    contour_data['labels'] = -1  # all labels are unset
+    contour_data['melodiness'] = ""
+    contour_data['mel prob'] = -1
+    contour_data.num_end_cols = 4
+
+    if normalize:
+        contour_data = normalize_features(contour_data)
+
     return contour_data
 
 
-def features_from_contour_data(contour_data, normalize=True):
-    """ Get subset of columns corresponding to features.
+def normalize_features(contour_data):
+    """ Normalizes (trackwise) features in contour_data.
     Adds labels column with all labels unset.
 
     Parameters
@@ -45,39 +57,36 @@ def features_from_contour_data(contour_data, normalize=True):
 
     Returns
     -------
-    features : DataFrame
-        Pandas data frame with contour feature data.
+    contour_data : DataFrame
+        Pandas data frame with normalized contour feature data.
     """
-    features = contour_data.iloc[:, 2:12]
-    if normalize:
-        _, _, contour_sal = contours_from_contour_data(contour_data)
 
-        #maximum salience value across all contours
-        sal_max = contour_sal.max().max()
+    _, _, contour_sal = contours_from_contour_data(contour_data)
 
-        # normalize salience features by max salience
-        features['salience mean'] = features['salience mean']/sal_max
-        features['salience std'] = features['salience std']/sal_max
+    # maximum salience value across all contours
+    sal_max = contour_sal.max().max()
 
-        # normalize saience total by max salience and duration
-        features['salience tot'] = \
-            features['salience tot']/(sal_max*features['duration'])
+    # normalize salience features by max salience
+    contour_data['salience mean'] = contour_data['salience mean']/sal_max
+    contour_data['salience std'] = contour_data['salience std']/sal_max
 
-        # compute min and max duration
-        dur_min = features['duration'].min()
-        dur_max = features['duration'].max()
+    # normalize saience total by max salience and duration
+    contour_data['salience tot'] = \
+        contour_data['salience tot']/(sal_max*contour_data['duration'])
 
-        # normalize duration to be between 0 and 1
-        features['duration'] = \
-            (features['duration'] - dur_min)/(dur_max - dur_min)
+    # compute min and max duration
+    dur_min = contour_data['duration'].min()
+    dur_max = contour_data['duration'].max()
 
-        # give standardized duration back to total salience
-        features['salience tot'] = \
-            features['salience tot']*features['duration']
+    # normalize duration to be between 0 and 1
+    contour_data['duration'] = \
+        (contour_data['duration'] - dur_min)/(dur_max - dur_min)
 
-    features['labels'] = -1  # all labels are unset
-    features['overlap'] = -1 # overlaps are unset
-    return features
+    # give standardized duration back to total salience
+    contour_data['salience tot'] = \
+        contour_data['salience tot']*contour_data['duration']
+
+    return contour_data
 
 
 def contours_from_contour_data(contour_data):
@@ -97,12 +106,13 @@ def contours_from_contour_data(contour_data):
     contour_sal : DataFrame
         Pandas data frame with all raw contour salience values.
     """
-    contours = contour_data.iloc[:, 12:]
-    contour_times = contours.iloc[:, 0::3]
-    contour_freqs = contours.iloc[:, 1::3]
-    contour_sal = contours.iloc[:, 2::3]
+    n_end = contour_data.num_end_cols
+    contour_times = contour_data.iloc[:, 12:-n_end:3]
+    contour_freqs = contour_data.iloc[:, 13:-n_end:3]
+    contour_sal = contour_data.iloc[:, 14:-n_end:3]
 
     return contour_times, contour_freqs, contour_sal
+
 
 def load_annotation(fpath):
     """ Load an annotation file into a pandas Series.
@@ -128,7 +138,7 @@ def load_annotation(fpath):
     return annot_data
 
 
-def make_coverage_plot(contour_data, annot_data, contour_data2=None):
+def plot_contours(contour_data, annot_data, contour_data2=None):
     """ Plot contours against annotation.
 
     Parameters
@@ -160,7 +170,7 @@ def make_coverage_plot(contour_data, annot_data, contour_data2=None):
     plt.show()
 
 
-def contour_overlap(contour_data, annot_data):
+def compute_overlap(contour_data, annot_data):
     """ Compute percentage of overlap of each contour with annotation.
 
     Parameters
@@ -176,7 +186,6 @@ def contour_overlap(contour_data, annot_data):
         Pandas data frame with feature_data and labels.
     """
     c_times, c_freqs, _ = contours_from_contour_data(contour_data)
-    feature_data = features_from_contour_data(contour_data)
 
     for (times, freqs) in zip(c_times.iterrows(), c_freqs.iterrows()):
         row_idx = times[0]
@@ -195,12 +204,12 @@ def contour_overlap(contour_data, annot_data):
         res = mir_eval.melody.evaluate(gt_segment['time'].values,
                                        gt_segment['f0'].values, times, freqs)
 
-        feature_data.ix[row_idx, 'overlap'] = res['Overall Accuracy']
+        contour_data.ix[row_idx, 'overlap'] = res['Overall Accuracy']
 
-    return feature_data
+    return contour_data
 
 
-def label_contours(feature_data, olap_thresh):
+def label_contours(contour_data, olap_thresh):
     """ Compute contours based on annotation.
     Contours with at least olap_thresh overlap with annotation
     are labeled as positive examples. Otherwise negative.
@@ -216,77 +225,77 @@ def label_contours(feature_data, olap_thresh):
 
     Returns
     -------
-    feature_data : DataFrame
-        Pandas data frame with feature_data and labels.
-    """
-    feature_data['labels'] = 1*(feature_data['overlap'] > olap_thresh)
-    return feature_data
-
-
-def find_overlapping_contours(contour_data, annot_data):
-    """ Get subset of contour data that overlaps with annotation.
-
-    Parameters
-    ----------
     contour_data : DataFrame
-        Pandas data frame with all contour data.
-    annot_data : DataFrame
-        Pandas data frame with all annotation data.
-
-    Returns
-    -------
-    olap_contours : DataFrame
-        Subset of contour_data that overlaps with annotation.
+        Pandas data frame with contour_data and labels.
     """
-    olap_contours = contour_data.copy()
-
-    c_times, c_freqs, _ = contours_from_contour_data(contour_data)
-
-    for (times, freqs) in zip(c_times.iterrows(), c_freqs.iterrows()):
-        row_idx = times[0]
-        times = times[1].values
-        freqs = freqs[1].values
-
-        # remove trailing NaNs
-        times = times[~np.isnan(times)]
-        freqs = freqs[~np.isnan(freqs)]
-
-        # get segment of ground truth matching this contour
-        gt_segment = annot_data[annot_data['time'] >= times[0]]
-        gt_segment = gt_segment[gt_segment['Time'] <= times[-1]]
-
-        # compute metrics
-        res = mir_eval.melody.evaluate(gt_segment['time'].values,
-                                       gt_segment['f0'].values, times, freqs)
-        if res['Raw Pitch Accuracy'] == 0:
-            olap_contours.drop(row_idx, inplace=True)
-
-    return olap_contours
+    contour_data['labels'] = 1*(contour_data['overlap'] > olap_thresh)
+    return contour_data
 
 
-def join_features(features_list):
+# def find_overlapping_contours(contour_data, annot_data):
+#     """ Get subset of contour data that overlaps with annotation.
+
+#     Parameters
+#     ----------
+#     contour_data : DataFrame
+#         Pandas data frame with all contour data.
+#     annot_data : DataFrame
+#         Pandas data frame with all annotation data.
+
+#     Returns
+#     -------
+#     olap_contours : DataFrame
+#         Subset of contour_data that overlaps with annotation.
+#     """
+#     olap_contours = contour_data.copy()
+
+#     c_times, c_freqs, _ = contours_from_contour_data(contour_data)
+
+#     for (times, freqs) in zip(c_times.iterrows(), c_freqs.iterrows()):
+#         row_idx = times[0]
+#         times = times[1].values
+#         freqs = freqs[1].values
+
+#         # remove trailing NaNs
+#         times = times[~np.isnan(times)]
+#         freqs = freqs[~np.isnan(freqs)]
+
+#         # get segment of ground truth matching this contour
+#         gt_segment = annot_data[annot_data['time'] >= times[0]]
+#         gt_segment = gt_segment[gt_segment['Time'] <= times[-1]]
+
+#         # compute metrics
+#         res = mir_eval.melody.evaluate(gt_segment['time'].values,
+#                                        gt_segment['f0'].values, times, freqs)
+#         if res['Raw Pitch Accuracy'] == 0:
+#             olap_contours.drop(row_idx, inplace=True)
+
+#     return olap_contours
+
+
+def join_contours(contours_list):
     """ Merge features for a multiple track into a single DataFrame
 
     Parameters
     ----------
-    features_list : list of DataFrames
+    contours_list : list of DataFrames
         List of Pandas data frames with labeled features.
 
     Returns
     -------
-    all_features : DataFrame
+    all_contours : DataFrame
         Merged feature data.
     """
-    all_features = pd.concat(features_list, ignore_index=False)
-    return all_features
+    all_contours = pd.concat(contours_list, ignore_index=False)
+    return all_contours
 
 
-def pd_to_sklearn(features):
+def pd_to_sklearn(contour_data):
     """ Convert pandas data frame to sklearn style features and labels
 
     Parameters
     ----------
-    features : DataFrame
+    contour_data : DataFrame
         DataFrame containing labeled features.
 
     Returns
@@ -296,7 +305,7 @@ def pd_to_sklearn(features):
     Y : np.1darray
         Labels (n_samples,)
     """
-    X = np.array(features.iloc[:, 0:10])
-    Y = np.array(features['labels'])
+    X = np.array(contour_data.iloc[:, 2:12])
+    Y = np.array(contour_data['labels'])
     return X, Y
 
