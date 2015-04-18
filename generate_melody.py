@@ -2,6 +2,7 @@
 import pandas as pd
 import contour_classification.contour_utils as cc
 import numpy as np
+import mir_eval
 
 
 def melody_from_clf(contour_data, prob_thresh=0.5):
@@ -52,4 +53,16 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
     # mel_output.to_csv('/Users/rachelbittner/Desktop/mel_out2.csv', header=False)
 
     return mel_output
+
+
+def score_melodies(mel_output_dict, test_annot_dict):
+    melody_scores = {}
+    for key in mel_output_dict.keys():
+        ref = test_annot_dict[key]
+        est = mel_output_dict[key]
+        melody_scores[key] = mir_eval.melody.evaluate(ref['time'], ref['f0'], 
+                                                      est['time'], est['f0'])
+
+    return melody_scores
+
 
