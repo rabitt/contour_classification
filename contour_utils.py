@@ -89,7 +89,7 @@ def normalize_features(contour_data):
     return contour_data
 
 
-def contours_from_contour_data(contour_data):
+def contours_from_contour_data(contour_data, n_end=4):
     """ Get raw contour information from contour data
 
     Parameters
@@ -106,7 +106,6 @@ def contours_from_contour_data(contour_data):
     contour_sal : DataFrame
         Pandas data frame with all raw contour salience values.
     """
-    n_end = contour_data.num_end_cols
     contour_times = contour_data.iloc[:, 12:-n_end:3]
     contour_freqs = contour_data.iloc[:, 13:-n_end:3]
     contour_sal = contour_data.iloc[:, 14:-n_end:3]
@@ -324,6 +323,6 @@ def pd_to_sklearn(contour_data):
 
     X = np.array(joined_data)
     Y = np.array(joined_labels)
-    
+
     return X, Y
 
