@@ -2,10 +2,10 @@
 
 import pandas as pd
 import numpy as np
+import mir_eval
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set()
-import mir_eval
 
 
 def load_contour_data(fpath, normalize=True):
@@ -305,7 +305,21 @@ def pd_to_sklearn(contour_data):
     Y : np.1darray
         Labels (n_samples,)
     """
-    X = np.array(contour_data.iloc[:, 2:12])
-    Y = np.array(contour_data['labels'])
+
+    #  Reduce before join for speed and memory saving
+    if isinstance(contour_data, list):
+        red_list = []
+        lab_list = []
+        for cdat in contour_data:
+            red_list.append(cdat.iloc[:, 2:12])
+            lab_list.append(cdat['labels'])
+        joined_data = join_contours(red_list)
+        joined_labels = join_contours(lab_list)
+    else:
+        joined_data = contour_data.iloc[:, 2:12]
+        joined_labels = contour_data['labels']
+
+    X = np.array(joined_data)
+    Y = np.array(joined_labels)
     return X, Y
 
