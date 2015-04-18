@@ -295,7 +295,7 @@ def pd_to_sklearn(contour_data):
 
     Parameters
     ----------
-    contour_data : DataFrame
+    contour_data : DataFrame or dict of DataFrames
         DataFrame containing labeled features.
 
     Returns
@@ -307,19 +307,23 @@ def pd_to_sklearn(contour_data):
     """
 
     #  Reduce before join for speed and memory saving
-    if isinstance(contour_data, list):
+    if isinstance(contour_data, dict):
         red_list = []
         lab_list = []
-        for cdat in contour_data:
-            red_list.append(cdat.iloc[:, 2:12])
-            lab_list.append(cdat['labels'])
+
+        for key in contour_data.keys():
+            red_list.append(contour_data[key].iloc[:, 2:12])
+            lab_list.append(contour_data[key]['labels'])
+
         joined_data = join_contours(red_list)
         joined_labels = join_contours(lab_list)
+
     else:
         joined_data = contour_data.iloc[:, 2:12]
         joined_labels = contour_data['labels']
 
     X = np.array(joined_data)
     Y = np.array(joined_labels)
+    
     return X, Y
 
