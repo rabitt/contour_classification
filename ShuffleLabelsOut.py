@@ -9,14 +9,19 @@ from sklearn.cross_validation import ShuffleSplit
 
 class ShuffleLabelsOut(ShuffleSplit):
     '''Shuffle- Labels-Out cross-validation iterator
+
     Parameters
     ----------
     y :  array, [n_samples]
         Labels of samples
+
     n_iter : int (default 5)
         Number of shuffles to generate
+
     test_size : float (default 0.2), int, or None
+
     train_size : float, int, or None (default is None)
+
     random_state : int or RandomState
     '''
 
@@ -26,7 +31,8 @@ class ShuffleLabelsOut(ShuffleSplit):
         classes, y_indices = np.unique(y, return_inverse=True)
 
         super(ShuffleLabelsOut, self).__init__(
-            len(classes), n_iter, test_size, train_size, random_state)
+            len(classes), n_iter=n_iter, test_size=test_size, train_size=train_size,
+            random_state=random_state)
 
         self.classes = classes
         self.y_indices = y_indices
@@ -35,7 +41,7 @@ class ShuffleLabelsOut(ShuffleSplit):
         return ('%s(labels=%s, n_iter=%d, test_size=%s, '
                 'random_state=%s)' % (
                     self.__class__.__name__,
-                    self.y,
+                    self.y_indices,
                     self.n_iter,
                     str(self.test_size),
                     self.random_state,
