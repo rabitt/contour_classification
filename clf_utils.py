@@ -1,15 +1,36 @@
 """ Utilities for classifier experiments """
 from sklearn.ensemble import RandomForestClassifier as RFC
-from sklearn.cross_validation import KFold
 from sklearn import cross_validation
 from sklearn import metrics
 import numpy as np
 import matplotlib.pyplot as plt
 
 
-def cross_val_sweep(X_train, Y_train, plot=True):
+def cross_val_sweep(X_train, Y_train, max_search=100, step=5, plot=True):
+    """ Choose best parameter by performing cross fold validation
+
+    Parameters
+    ----------
+    X_train : np.array [n_samples, n_features]
+        Training features.
+    Y_train : np.array [n_samples]
+        Training labels
+    max_search : int
+        Maximum depth value to sweep
+    step : int
+        Step size in parameter sweep
+    plot : bool
+        If true, plot error bars and cv accuracy
+
+    Returns
+    -------
+    best_depth : int
+        Optimal max_depth parameter
+    max_cv_accuracy : DataFrames
+        Best accuracy achieved on hold out set with optimal parameter.
+    """
     scores = []
-    for max_depth in np.arange(5, 100, 5):
+    for max_depth in np.arange(5, max_search, step):
         print "training with max_depth=%s" % max_depth
         clf = RFC(n_estimators=100, max_depth=max_depth, n_jobs=-1, 
                   class_weight='auto')
@@ -34,5 +55,49 @@ def cross_val_sweep(X_train, Y_train, plot=True):
     return best_depth, max_cv_accuracy
 
 
+def train_clf(X_train, Y_train, best_depth):
+    """ Train classifier.
 
-    
+    Parameters
+    ----------
+    X_train : np.array [n_samples, n_features]
+        Training features.
+    Y_train : np.array [n_samples]
+        Training labels
+    best_depth : int
+        Optimal max_depth parameter
+
+    Returns
+    -------
+    clf : classifier
+        Trained scikit-learn classifier
+    """
+    clf = RFC(n_estimators=100, max_depth=best_depth, n_jobs=-1, 
+              class_weight='auto')
+    clf = clf.fit(X_train, Y_train)
+    return clf
+
+
+def clf_predictions(X_train, X_test, clf):
+    """ Compute probability predictions for all training and test examples.
+
+    Parameters
+    ----------
+    X_train : np.array [n_samples, n_features]
+        Training features.
+    X_test : np.array [n_samples, n_features]
+        Testing features.
+    clf : classifier
+        Trained scikit-learn classifier
+
+    Returns
+    -------
+    P_train : np.array [n_samples]
+        predicted probabilities for training set
+    P_test : np.array [n_samples]
+        predicted probabilities for testing set
+    """ 
+    P_train = clf.predict_proba(X_train)
+    P_test = clf.predict_proba(X_test)
+    return P_train, P_test
+
