@@ -60,21 +60,21 @@ def get_data_files(track, meltype=1):
     contours_path = "melodia_contours"
     annot_suffix = "MELODY%s.csv" % str(meltype)
     mel_dir = "MELODY%s" % str(meltype)
-    annot_path = os.path.join(os.environ['MEDLEYDB_PATH'], 'Annotations', \
-                                 'Melody_Annotations', mel_dir)
+    annot_path = os.path.join(os.environ['MEDLEYDB_PATH'], 'Annotations',
+                              'Melody_Annotations', mel_dir)
 
     contour_fname = "%s_%s" % (track, contour_suffix)
     contour_fpath = os.path.join(contours_path, contour_fname)
     annot_fname = "%s_%s" % (track, annot_suffix)
     annot_fpath = os.path.join(annot_path, annot_fname)
 
-    cdat = cc.load_contour_data(contour_fpath)
+    cdat = cc.load_contour_data(contour_fpath, normalize=True)
     adat = cc.load_annotation(annot_fpath)
 
     return cdat, adat
 
 
-def contour_probs(clf, feat_data, contour_data):
+def contour_probs(clf, contour_data):
     """ Compute classifier probabilities for contours.
 
     Parameters
@@ -92,14 +92,14 @@ def contour_probs(clf, feat_data, contour_data):
         Merged feature data.
     """
     contour_data['mel_prob'] = -1
-    X, Y = cc.pd_to_sklearn(feat_data)
+    X, _ = cc.pd_to_sklearn(contour_data)
     probs = clf.predict_proba(X)
     mel_probs = [p[1] for p in probs]
     contour_data['mel_prob'] = mel_probs
     return contour_data
 
 
-def compute_overlap(train_tracks, test_tracks, meltype):
+def compute_all_overlaps(train_tracks, test_tracks, meltype):
     """ Compute each contour's overlap with annotation.
 
     Parameters
@@ -113,14 +113,13 @@ def compute_overlap(train_tracks, test_tracks, meltype):
 
     Returns
     -------
-    train_feat_list : list of DataFrames
+    train_contour_list : list of DataFrames
         List of train feature data frames
-    test_feat_list : list of DataFrames
+    test_contour_list : list of DataFrames
         List of test feature data frames
     """
 
-    train_feat_list = []
-
+    train_contour_list = []
 
     msg = "Generating training features..."
     train_len = len(train_tracks)
@@ -129,12 +128,12 @@ def compute_overlap(train_tracks, test_tracks, meltype):
 
     for track in train_tracks:
         cdat, adat = get_data_files(track, meltype=meltype)
-        train_feat_list.append(cc.contour_overlap(cdat, adat))
+        train_contour_list.append(cc.compute_overlap(cdat, adat))
         sys.stdout.write('.')
 
     print "-"*30
 
-    test_feat_list = []
+    test_contour_list = []
 
     msg = "Generating testing features..."
     test_len = len(test_tracks)
@@ -143,10 +142,10 @@ def compute_overlap(train_tracks, test_tracks, meltype):
 
     for track in test_tracks:
         cdat, adat = get_data_files(track, meltype=meltype)
-        test_feat_list.append(cc.contour_overlap(cdat, adat))
+        test_contour_list.append(cc.compute_overlap(cdat, adat))
         sys.stdout.write('.')
 
-    return train_feat_list, test_feat_list
+    return train_contour_list, test_contour_list
 
 
 def label_all_contours(train_feat_list, test_feat_list, olap_thresh):
