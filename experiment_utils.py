@@ -89,13 +89,13 @@ def compute_all_overlaps(train_tracks, test_tracks, meltype):
 
     Returns
     -------
-    train_contour_list : list of DataFrames
-        List of train feature data frames
-    test_contour_list : list of DataFrames
-        List of test feature data frames
+    train_contour_dict : dict of DataFrames
+        Dict of train feature data frames keyed by trackid
+    test_contour_dict : dict of DataFrames
+        Dict of test feature data frames keyed by trackid
     """
 
-    train_contour_list = []
+    train_contour_dict = {}
 
     msg = "Generating training features..."
     train_len = len(train_tracks)
@@ -104,12 +104,14 @@ def compute_all_overlaps(train_tracks, test_tracks, meltype):
 
     for track in train_tracks:
         cdat, adat = get_data_files(track, meltype=meltype)
-        train_contour_list.append(cc.compute_overlap(cdat, adat))
+        train_contour_dict[track] = cc.compute_overlap(cdat, adat)
         sys.stdout.write('.')
 
+    print ""
     print "-"*30
 
-    test_contour_list = []
+    test_contour_dict = {}
+    test_annot_dict = {}
 
     msg = "Generating testing features..."
     test_len = len(test_tracks)
@@ -118,69 +120,69 @@ def compute_all_overlaps(train_tracks, test_tracks, meltype):
 
     for track in test_tracks:
         cdat, adat = get_data_files(track, meltype=meltype)
-        test_contour_list.append(cc.compute_overlap(cdat, adat))
+        test_annot_dict[track] = adat.copy()
+        test_contour_dict[track] = cc.compute_overlap(cdat, adat)
         sys.stdout.write('.')
 
-    return train_contour_list, test_contour_list
+    return train_contour_dict, test_contour_dict, test_annot_dict
 
 
-def olap_stats(train_contour_list):
+def olap_stats(train_contour_dict):
     """ Compute overlap statistics.
 
     Parameters
     ----------
-    train_contour_list : list of DataFrames
-        List of train contour data frames
+    train_contour_dict : dict of DataFrames
+        Dict of train contour data frames
 
     Returns
     -------
-    olap_stats : DataFrames
+    partial_olap_stats : DataFrames
         Description of overlap data.
     zero_olap_stats : DataFrames
         Description of non-overlap data.
     """
     # reduce for speed and memory
     red_list = []
-    for cdat in train_contour_list:
-        red_list.append(cdat.iloc[:, 2:12])
-    joined_data = join_contours(red_list)
+    for cdat in train_contour_dict.values():
+        red_list.append(cdat.['overlap'])
 
-    overlap_dat = cc.join_contours(joined_data)
+    overlap_dat = cc.join_contours(red_list)
     non_zero_olap = overlap_dat['overlap'][overlap_dat['overlap'] > 0]
     zero_olap = overlap_dat['overlap'][overlap_dat['overlap'] == 0]
-    olap_stats = non_zero_olap.describe()
+    partial_olap_stats = non_zero_olap.describe()
     zero_olap_stats = zero_olap.describe()
 
-    return olap_stats, zero_olap_stats
+    return partial_olap_stats, zero_olap_stats
 
 
-def label_all_contours(train_contour_list, test_contour_list, olap_thresh):
+def label_all_contours(train_contour_dict, test_contour_dict, olap_thresh):
     """ Add labels to contours based on overlap_thresh.
 
     Parameters
     ----------
-    train_contour_list : list of DataFrames
-        List of train contour data frames
-    test_contour_list : list of DataFrames
-        List of test contour data frames
+    train_contour_dict : dict of DataFrames
+        dict of train contour data frames
+    test_contour_dict : dict of DataFrames
+        dict of test contour data frames
     olap_thresh : float
         Value in [0, 1). Min overlap to be labeled as melody.
 
     Returns
     -------
-    train_contour_list : list of DataFrames
-        List of train contour data frames
-    test_contour_list : list of DataFrames
-        List of test contour data frames
+    train_contour_dict : dict of DataFrames
+        dict of train contour data frames
+    test_contour_dict : dict of DataFrames
+        dict of test contour data frames
     """
-    for i, train_feat in enumerate(train_contour_list):
-        train_contour_list[i] = cc.label_contours(train_feat,
-                                                  olap_thresh=olap_thresh)
+    for key in train_contour_dict.keys():
+        train_contour_dict[key] = cc.label_contours(train_contour_dict[key],
+                                                    olap_thresh=olap_thresh)
 
-    for i, test_feat in enumerate(test_contour_list):
-        test_contour_list[i] = cc.label_contours(test_feat,
-                                                 olap_thresh=olap_thresh)
-    return train_contour_list, test_contour_list
+    for key in test_contour_dict.keys():
+        test_contour_dict[key] = cc.label_contours(test_contour_dict[key],
+                                                   olap_thresh=olap_thresh)
+    return train_contour_dict, test_contour_dict
 
 
 def contour_probs(clf, contour_data):
@@ -190,15 +192,13 @@ def contour_probs(clf, contour_data):
     ----------
     clf : scikit-learn classifier
         Binary classifier.
-    feat_data : DataFrame
-        DataFrame with features.
     contour_data : DataFrame
         DataFrame with contour information.
 
     Returns
     -------
-    all_features : DataFrame
-        Merged feature data.
+    contour_data : DataFrame
+        DataFrame with contour information and predicted probabilities.
     """
     contour_data['mel prob'] = -1
     X, _ = cc.pd_to_sklearn(contour_data)
