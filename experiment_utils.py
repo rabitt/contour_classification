@@ -7,6 +7,7 @@ import numpy as np
 import os
 import sys
 
+
 def create_splits():
     """ Split MedleyDB into train/test splits.
 
@@ -72,31 +73,6 @@ def get_data_files(track, meltype=1):
     adat = cc.load_annotation(annot_fpath)
 
     return cdat, adat
-
-
-def contour_probs(clf, contour_data):
-    """ Compute classifier probabilities for contours.
-
-    Parameters
-    ----------
-    clf : scikit-learn classifier
-        Binary classifier.
-    feat_data : DataFrame
-        DataFrame with features.
-    contour_data : DataFrame
-        DataFrame with contour information.
-
-    Returns
-    -------
-    all_features : DataFrame
-        Merged feature data.
-    """
-    contour_data['mel_prob'] = -1
-    X, _ = cc.pd_to_sklearn(contour_data)
-    probs = clf.predict_proba(X)
-    mel_probs = [p[1] for p in probs]
-    contour_data['mel_prob'] = mel_probs
-    return contour_data
 
 
 def compute_all_overlaps(train_tracks, test_tracks, meltype):
@@ -175,3 +151,28 @@ def label_all_contours(train_feat_list, test_feat_list, olap_thresh):
         test_feat_list[i] = cc.label_contours(test_feat,
                                               olap_thresh=olap_thresh)
     return train_feat_list, test_feat_list
+
+
+def contour_probs(clf, contour_data):
+    """ Compute classifier probabilities for contours.
+
+    Parameters
+    ----------
+    clf : scikit-learn classifier
+        Binary classifier.
+    feat_data : DataFrame
+        DataFrame with features.
+    contour_data : DataFrame
+        DataFrame with contour information.
+
+    Returns
+    -------
+    all_features : DataFrame
+        Merged feature data.
+    """
+    contour_data['mel prob'] = -1
+    X, _ = cc.pd_to_sklearn(contour_data)
+    probs = clf.predict_proba(X)
+    mel_probs = [p[1] for p in probs]
+    contour_data['mel prob'] = mel_probs
+    return contour_data
