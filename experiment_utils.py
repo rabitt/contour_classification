@@ -1,8 +1,11 @@
+""" Helper functions for experiments """
+
 from contour_classification.ShuffleLabelsOut import ShuffleLabelsOut
 import contour_classification.contour_utils as cc
 import json
 import numpy as np
 import os
+import sys
 
 def create_splits():
     """ Split MedleyDB into train/test splits.
@@ -31,7 +34,7 @@ def create_splits():
     #     train_tracks = mdb_files[train]
     #     test_tracks = mdb_files[test]
     #     break
-    
+
     return mdb_files, splitter
 
 
@@ -64,7 +67,7 @@ def get_data_files(track, meltype=1):
     contour_fpath = os.path.join(contours_path, contour_fname)
     annot_fname = "%s_%s" % (track, annot_suffix)
     annot_fpath = os.path.join(annot_path, annot_fname)
-    
+
     cdat = cc.load_contour_data(contour_fpath)
     adat = cc.load_annotation(annot_fpath)
 
@@ -89,8 +92,87 @@ def contour_probs(clf, feat_data, contour_data):
         Merged feature data.
     """
     contour_data['mel_prob'] = -1
-    X, Y = pd_to_sklearn(feat_data)
+    X, Y = cc.pd_to_sklearn(feat_data)
     probs = clf.predict_proba(X)
     mel_probs = [p[1] for p in probs]
     contour_data['mel_prob'] = mel_probs
     return contour_data
+
+
+def compute_overlap(train_tracks, test_tracks, meltype):
+    """ Compute each contour's overlap with annotation.
+
+    Parameters
+    ----------
+    train_tracks : list
+        List of trackids in training set
+    test_tracks : list
+        List of trackids in test set
+    meltype : int
+        One of [1,2,3]
+
+    Returns
+    -------
+    train_feat_list : list of DataFrames
+        List of train feature data frames
+    test_feat_list : list of DataFrames
+        List of test feature data frames
+    """
+
+    train_feat_list = []
+
+
+    msg = "Generating training features..."
+    train_len = len(train_tracks)
+    num_spaces = train_len - len(msg)
+    print msg + ' '*num_spaces + '|'
+
+    for track in train_tracks:
+        cdat, adat = get_data_files(track, meltype=meltype)
+        train_feat_list.append(cc.contour_overlap(cdat, adat))
+        sys.stdout.write('.')
+
+    print "-"*30
+
+    test_feat_list = []
+
+    msg = "Generating testing features..."
+    test_len = len(test_tracks)
+    num_spaces = test_len - len(msg)
+    print msg + ' '*num_spaces + '|'
+
+    for track in test_tracks:
+        cdat, adat = get_data_files(track, meltype=meltype)
+        test_feat_list.append(cc.contour_overlap(cdat, adat))
+        sys.stdout.write('.')
+
+    return train_feat_list, test_feat_list
+
+
+def label_all_contours(train_feat_list, test_feat_list, olap_thresh):
+    """ Add labels to features based on overlap_thresh.
+
+    Parameters
+    ----------
+    train_feat_list : list of DataFrames
+        List of train feature data frames
+    test_feat_list : list of DataFrames
+        List of test feature data frames
+    olap_thresh : float
+        Value in [0, 1). Min overlap to be labeled as melody.
+
+    Returns
+    -------
+    train_feat_list : list of DataFrames
+        List of train feature data frames
+    test_feat_list : list of DataFrames
+        List of test feature data frames
+    """
+    for i, train_feat in enumerate(train_feat_list):
+        train_feat_list[i] = cc.label_contours(train_feat,
+                                               olap_thresh=olap_thresh)
+
+    for i, test_feat in enumerate(test_feat_list):
+        test_feat_list[i] = cc.label_contours(test_feat,
+                                              olap_thresh=olap_thresh)
+    return train_feat_list, test_feat_list
