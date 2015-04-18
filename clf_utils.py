@@ -101,3 +101,46 @@ def clf_predictions(X_train, X_test, clf):
     P_test = clf.predict_proba(X_test)
     return P_train, P_test
 
+
+def clf_metrics(P_train, P_test, Y_train, Y_test):
+    """ Compute metrics on classifier predictions
+
+    Parameters
+    ----------
+    P_train : np.array [n_samples]
+        predicted probabilities for training set
+    P_test : np.array [n_samples]
+        predicted probabilities for testing set
+    Y_train : np.array [n_samples]
+        Training labels.
+    Y_test : np.array [n_samples]
+        Testing labels.
+
+    Returns
+    -------
+    clf_scores : dict
+        classifier scores for training set
+    """ 
+    Y_pred_train = 1*(P_train >= 0.5)
+    Y_pred_test = 1*(P_test >= 0.5)
+
+    train_scores = {}
+    test_scores = {}
+
+    train_scores['accuracy'] = metrics.accuracy_score(Y_train, Y_pred_train)
+    test_scores['accuracy'] = metrics.accuracy_score(Y_test, Y_pred_test)
+
+    train_scores['confusion matrix'] = \
+        metrics.confusion_matrix(Y_train, Y_pred_train, labels=[0, 1])
+    test_scores['confusion matrix'] = \
+        metrics.confusion_matrix(Y_test, Y_pred_test, labels=[0, 1])
+
+    train_scores['auc score'] = \
+        metrics.roc_auc_score(Y_train, P_train + 1, average='weighted')
+    test_scores['auc score'] = \
+        metrics.roc_auc_score(Y_test, P_test + 1, average='weighted')
+
+    clf_scores = {'train': train_scores, 'test': test_scores}
+
+    return clf_scores
+
