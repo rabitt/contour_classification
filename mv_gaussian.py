@@ -26,7 +26,7 @@ def transform_features(X_train, X_test):
         Transformed testing features.
     """
     X_train = X_train[:, 0:6]
-    X_test = X_test[: 0:6]
+    X_test = X_test[:, 0:6]
 
     _, n_feats = X_train.shape
 
@@ -60,7 +60,7 @@ def fit_gaussians(X_train_boxcox, Y_train):
         multivariate normal for melody class
     rv_neg : multivariate normal
         multivariate normal for non-melody class
-    """    
+    """
     pos_idx = np.where(Y_train == 1)[0]
     mu_pos = np.mean(X_train_boxcox[pos_idx, :], axis=0)
     cov_pos = np.cov(X_train_boxcox[pos_idx, :], rowvar=0)
@@ -89,7 +89,7 @@ def melodiness(sample, rv_pos, rv_neg):
     -------
     melodiness: float
         score between 0 and inf. class cutoff at 1
-    """       
+    """
     return rv_pos.pdf(sample)/rv_neg.pdf(sample)
 
 
@@ -113,7 +113,7 @@ def compute_all_melodiness(X_train_boxcox, X_test_boxcox, rv_pos, rv_neg):
         melodiness scores for training set
     M_test : np.array [n_samples]
         melodiness scores for testing set
-    """ 
+    """
     n_train = X_train_boxcox.shape[0]
     n_test = X_test_boxcox.shape[0]
 
@@ -147,7 +147,7 @@ def melodiness_metrics(M_train, M_test, Y_train, Y_test):
     -------
     melodiness_scores : dict
         melodiness scores for training set
-    """ 
+    """
     M_bin_train = 1*(M_train >= 1)
     M_bin_test = 1*(M_test >= 1)
 
