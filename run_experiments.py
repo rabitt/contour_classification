@@ -1,0 +1,155 @@
+""" Functions to run full experiment """
+import contour_classification.contour_utils as cc
+import contour_classification.experiment_utils as eu
+import contour_classification.mv_gaussian as mv
+import contour_classification.clf_utils as cu
+import contour_classification.generate_melody as gm
+
+import pandas as pd
+import numpy as np
+import random
+
+
+def run_experiments(mel_type, outdir):
+
+    mdb_files, splitter = eu.create_splits(test_size=0.15)
+
+    for train, test in splitter:
+        random.shuffle(train)
+        n_train = len(train) - (len(test)/2)
+        train_tracks = mdb_files[train[:n_train]]
+        valid_tracks = mdb_files[train[n_train:]]
+        test_tracks = mdb_files[test]
+        
+        train_contour_dict, valid_contour_dict, valid_annot_dict, \
+            test_contour_dict, test_annot_dict = \
+                preprocessing(train_tracks, valid_tracks, test_tracks, mel_type, 
+                              outdir)
+
+        for olap_thresh in np.arange(0, 1, 0.1):
+            x_train, y_train, x_valid, y_valid, \
+            x_test, y_test, test_contour_dict = \
+                compute_labels(train_contour_dict, valid_contour_dict, \
+                               test_contour_dict, olap_thresh)
+
+            multivariate_gaussian(x_train, y_train, x_test, y_test, outdir)
+
+            clf, best_thresh = classifier(x_train, y_train, x_valid, y_valid, 
+                                          x_test, y_test, outdir)
+
+            melody_output(clf, best_thresh, test_contour_dict, test_annot_dict, 
+                          outdir)
+
+
+
+def preprocessing(train_tracks, valid_tracks, test_tracks, mel_type, outdir):
+    """ Split out features and compute labels
+
+    """
+    # Compute Overlap with Annotation
+    train_contour_dict, valid_contour_dict, valid_annot_dict, \
+        test_contour_dict, test_annot_dict = \
+            eu.compute_all_overlaps(train_tracks, valid_tracks,
+                                    test_tracks, meltype=mel_type)
+
+
+    # Compute overlap statistics of contours with partial overlap
+    olap_stats, _ = eu.olap_stats(train_contour_dict)
+
+    return train_contour_dict, valid_contour_dict, valid_annot_dict, \
+           test_contour_dict, test_annot_dict
+
+
+def compute_labels(train_contour_dict, valid_contour_dict, \
+                   test_contour_dict, olap_thresh):
+    """
+    """
+    # Compute Labels using Overlap Threshold
+    train_contour_dict, valid_contour_dict, test_contour_dict = \
+        eu.label_all_contours(train_contour_dict, valid_contour_dict, \
+                              test_contour_dict, olap_thresh=olap_thresh)
+
+    x_train, y_train = cc.pd_to_sklearn(train_contour_dict)
+    x_valid, y_valid = cc.pd_to_sklearn(valid_contour_dict)
+    x_test, y_test = cc.pd_to_sklearn(test_contour_dict)
+
+    return x_train, y_train, x_valid, y_valid, x_test, y_test, test_contour_dict
+
+
+
+def multivariate_gaussian(x_train, y_train, x_test, y_test, outdir):
+    # Score with Multivariate Gaussian
+
+    # Transform data using boxcox transform, and fit multivariate gaussians.
+    x_train_boxcox, x_test_boxcox = mv.transform_features(x_train, x_test)
+    rv_pos, rv_neg = mv.fit_gaussians(x_train_boxcox, y_train)
+
+
+    # Compute melodiness scores on train and test set
+    m_train, m_test = mv.compute_all_melodiness(x_train_boxcox, x_test_boxcox,
+                                                rv_pos, rv_neg)
+
+    # Compute various metrics based on melodiness scores.
+    melodiness_scores = mv.melodiness_metrics(m_train, m_test, y_train, y_test)
+    best_thresh, max_fscore = eu.get_best_threshold(y_test, m_test)
+    print best_thresh
+    print max_fscore
+    print melodiness_scores
+
+
+def classifier(x_train, y_train, x_valid, y_valid, x_test, y_test, outdir):
+    """ Train Classifier
+    """
+
+    # Cross Validation
+    best_depth, max_cv_accuracy = cu.cross_val_sweep(x_train, y_train)
+    print best_depth
+    print max_cv_accuracy
+
+    # Training
+    clf = cu.train_clf(x_train, y_train, best_depth)
+
+    # Predict and Score
+    p_train, p_valid, p_test = cu.clf_predictions(x_train, x_valid, x_test, clf)
+    clf_scores = cu.clf_metrics(p_train, p_test, y_train, y_test)
+    print clf_scores
+
+    # Get threshold that maximizes F1 score
+    best_thresh, max_fscore = eu.get_best_threshold(y_valid, p_valid)
+    print best_thresh
+    print max_fscore
+    return clf, best_thresh
+
+
+def melody_output(clf, best_thresh, test_contour_dict, test_annot_dict, outdir):
+    """ Generate Melody Output
+    """
+
+    # Add predicted melody probabilites to test set contour data
+    for key in test_contour_dict.keys():
+        test_contour_dict[key] = eu.contour_probs(clf, test_contour_dict[key])
+
+    # Generate melody output using predictions
+    mel_output_dict = {}
+    for key in test_contour_dict.keys():
+        mel_output_dict[key] = gm.melody_from_clf(test_contour_dict[key],
+                                                  prob_thresh=best_thresh)
+
+    # Score Melody Output
+    mel_scores = gm.score_melodies(mel_output_dict, test_annot_dict)
+
+    overall_scores = \
+        pd.DataFrame(columns=['VR', 'VFA', 'RPA', 'RCA', 'OA'],
+                     index=mel_scores.keys())
+    overall_scores['VR'] = \
+        [mel_scores[key]['Voicing Recall'] for key in mel_scores.keys()]
+    overall_scores['VFA'] = \
+        [mel_scores[key]['Voicing False Alarm'] for key in mel_scores.keys()]
+    overall_scores['RPA'] = \
+        [mel_scores[key]['Raw Pitch Accuracy'] for key in mel_scores.keys()]
+    overall_scores['RCA'] = \
+        [mel_scores[key]['Raw Chroma Accuracy'] for key in mel_scores.keys()]
+    overall_scores['OA'] = \
+        [mel_scores[key]['Overall Accuracy'] for key in mel_scores.keys()]
+
+    overall_scores.describe()
