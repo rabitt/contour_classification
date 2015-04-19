@@ -3,12 +3,16 @@
 from contour_classification.ShuffleLabelsOut import ShuffleLabelsOut
 import contour_classification.contour_utils as cc
 import json
+from sklearn import metrics
 import numpy as np
 import os
 import sys
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set()
 
 
-def create_splits():
+def create_splits(test_size=0.15):
     """ Split MedleyDB into train/test splits.
 
     Returns
@@ -29,12 +33,7 @@ def create_splits():
 
     keys = np.asarray(keys)
     mdb_files = np.asarray(mdb_files)
-    splitter = ShuffleLabelsOut(keys, random_state=1)
-
-    # for train, test in splitter:
-    #     train_tracks = mdb_files[train]
-    #     test_tracks = mdb_files[test]
-    #     break
+    splitter = ShuffleLabelsOut(keys, random_state=1, test_size=test_size)
 
     return mdb_files, splitter
 
@@ -75,13 +74,15 @@ def get_data_files(track, meltype=1):
     return cdat, adat
 
 
-def compute_all_overlaps(train_tracks, test_tracks, meltype):
+def compute_all_overlaps(train_tracks, valid_tracks, test_tracks, meltype):
     """ Compute each contour's overlap with annotation.
 
     Parameters
     ----------
     train_tracks : list
         List of trackids in training set
+    valid_tracks : list
+        List of trackids in validation set
     test_tracks : list
         List of trackids in test set
     meltype : int
@@ -90,9 +91,11 @@ def compute_all_overlaps(train_tracks, test_tracks, meltype):
     Returns
     -------
     train_contour_dict : dict of DataFrames
-        Dict of train feature data frames keyed by trackid
+        Dict of train dataframes keyed by trackid
+    valid_contour_dict : dict of DataFrames
+        Dict of validation dataframes keyed by trackid
     test_contour_dict : dict of DataFrames
-        Dict of test feature data frames keyed by trackid
+        Dict of test dataframes keyed by trackid
     """
 
     train_contour_dict = {}
@@ -105,6 +108,23 @@ def compute_all_overlaps(train_tracks, test_tracks, meltype):
     for track in train_tracks:
         cdat, adat = get_data_files(track, meltype=meltype)
         train_contour_dict[track] = cc.compute_overlap(cdat, adat)
+        sys.stdout.write('.')
+
+    print ""
+    print "-"*30
+
+    valid_contour_dict = {}
+    valid_annot_dict = {}
+
+    msg = "Generating validation features..."
+    valid_len = len(valid_tracks)
+    num_spaces = valid_len - len(msg)
+    print msg + ' '*num_spaces + '|'
+
+    for track in valid_tracks:
+        cdat, adat = get_data_files(track, meltype=meltype)
+        valid_annot_dict[track] = adat.copy()
+        valid_contour_dict[track] = cc.compute_overlap(cdat, adat)
         sys.stdout.write('.')
 
     print ""
@@ -124,7 +144,8 @@ def compute_all_overlaps(train_tracks, test_tracks, meltype):
         test_contour_dict[track] = cc.compute_overlap(cdat, adat)
         sys.stdout.write('.')
 
-    return train_contour_dict, test_contour_dict, test_annot_dict
+    return train_contour_dict, valid_contour_dict, valid_annot_dict, \
+           test_contour_dict, test_annot_dict
 
 
 def olap_stats(train_contour_dict):
@@ -145,24 +166,27 @@ def olap_stats(train_contour_dict):
     # reduce for speed and memory
     red_list = []
     for cdat in train_contour_dict.values():
-        red_list.append(cdat.['overlap'])
+        red_list.append(cdat['overlap'])
 
     overlap_dat = cc.join_contours(red_list)
-    non_zero_olap = overlap_dat['overlap'][overlap_dat['overlap'] > 0]
-    zero_olap = overlap_dat['overlap'][overlap_dat['overlap'] == 0]
+    non_zero_olap = overlap_dat[overlap_dat > 0]
+    zero_olap = overlap_dat[overlap_dat == 0]
     partial_olap_stats = non_zero_olap.describe()
     zero_olap_stats = zero_olap.describe()
 
     return partial_olap_stats, zero_olap_stats
 
 
-def label_all_contours(train_contour_dict, test_contour_dict, olap_thresh):
+def label_all_contours(train_contour_dict, valid_contour_dict,
+                       test_contour_dict, olap_thresh):
     """ Add labels to contours based on overlap_thresh.
 
     Parameters
     ----------
     train_contour_dict : dict of DataFrames
         dict of train contour data frames
+    valid_contour_dict : dict of DataFrames
+        dict of validation contour data frames
     test_contour_dict : dict of DataFrames
         dict of test contour data frames
     olap_thresh : float
@@ -179,10 +203,14 @@ def label_all_contours(train_contour_dict, test_contour_dict, olap_thresh):
         train_contour_dict[key] = cc.label_contours(train_contour_dict[key],
                                                     olap_thresh=olap_thresh)
 
+    for key in valid_contour_dict.keys():
+        valid_contour_dict[key] = cc.label_contours(valid_contour_dict[key],
+                                                    olap_thresh=olap_thresh)
+
     for key in test_contour_dict.keys():
         test_contour_dict[key] = cc.label_contours(test_contour_dict[key],
                                                    olap_thresh=olap_thresh)
-    return train_contour_dict, test_contour_dict
+    return train_contour_dict, valid_contour_dict, test_contour_dict
 
 
 def contour_probs(clf, contour_data):
@@ -206,3 +234,29 @@ def contour_probs(clf, contour_data):
     mel_probs = [p[1] for p in probs]
     contour_data['mel prob'] = mel_probs
     return contour_data
+
+
+def get_best_threshold(Y_ref, Y_pred_score, plot=True):
+    fpr, tpr, thresholds = \
+            metrics.roc_curve(Y_ref, Y_pred_score, pos_label=1)
+
+    P = 1 - fpr
+    R = tpr
+
+    f_scores = 2*(P*R)/(P+R)
+
+    max_fscore = f_scores[np.argmax(f_scores)]
+    best_threshold =  thresholds[np.argmax(f_scores)]
+
+    if plot:
+        plt.plot(fpr, tpr, 'b', label='ROC curve')
+        plt.plot([0, 1], [0, 1], 'k--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.0])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('Melodiness Receiver operating characteristic')
+        plt.legend(loc="lower right")
+        plt.show()
+
+    return best_threshold, max_fscore
