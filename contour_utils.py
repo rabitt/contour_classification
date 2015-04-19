@@ -299,9 +299,9 @@ def pd_to_sklearn(contour_data):
 
     Returns
     -------
-    X : np.ndarray
+    features : np.ndarray
         fetures (n_samples x n_features)
-    Y : np.1darray
+    labels : np.1darray
         Labels (n_samples,)
     """
 
@@ -321,8 +321,8 @@ def pd_to_sklearn(contour_data):
         joined_data = contour_data.iloc[:, 2:12]
         joined_labels = contour_data['labels']
 
-    X = np.array(joined_data)
-    Y = np.array(joined_labels)
+    features = np.array(joined_data)
+    labels = np.array(joined_labels)
 
-    return X, Y
+    return features, labels
 

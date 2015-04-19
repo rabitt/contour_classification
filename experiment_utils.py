@@ -27,9 +27,9 @@ def create_splits(test_size=0.15):
     mdb_files = []
     keys = []
 
-    for k, v in sorted(index.items()):
-        mdb_files.append(k)
-        keys.append(v)
+    for trackid, artist in sorted(index.items()):
+        mdb_files.append(trackid)
+        keys.append(artist)
 
     keys = np.asarray(keys)
     mdb_files = np.asarray(mdb_files)
@@ -101,8 +101,7 @@ def compute_all_overlaps(train_tracks, valid_tracks, test_tracks, meltype):
     train_contour_dict = {}
 
     msg = "Generating training features..."
-    train_len = len(train_tracks)
-    num_spaces = train_len - len(msg)
+    num_spaces = len(train_tracks) - len(msg)
     print msg + ' '*num_spaces + '|'
 
     for track in train_tracks:
@@ -117,8 +116,7 @@ def compute_all_overlaps(train_tracks, valid_tracks, test_tracks, meltype):
     valid_annot_dict = {}
 
     msg = "Generating validation features..."
-    valid_len = len(valid_tracks)
-    num_spaces = valid_len - len(msg)
+    num_spaces = len(valid_tracks) - len(msg)
     print msg + ' '*num_spaces + '|'
 
     for track in valid_tracks:
@@ -134,8 +132,7 @@ def compute_all_overlaps(train_tracks, valid_tracks, test_tracks, meltype):
     test_annot_dict = {}
 
     msg = "Generating testing features..."
-    test_len = len(test_tracks)
-    num_spaces = test_len - len(msg)
+    num_spaces = len(test_tracks) - len(msg)
     print msg + ' '*num_spaces + '|'
 
     for track in test_tracks:
@@ -229,24 +226,42 @@ def contour_probs(clf, contour_data):
         DataFrame with contour information and predicted probabilities.
     """
     contour_data['mel prob'] = -1
-    X, _ = cc.pd_to_sklearn(contour_data)
-    probs = clf.predict_proba(X)
+    features, _ = cc.pd_to_sklearn(contour_data)
+    probs = clf.predict_proba(features)
     mel_probs = [p[1] for p in probs]
     contour_data['mel prob'] = mel_probs
     return contour_data
 
 
-def get_best_threshold(Y_ref, Y_pred_score, plot=True):
+def get_best_threshold(y_ref, y_pred_score, plot=True):
+    """ Get threshold on scores that maximizes f1 score.
+
+    Parameters
+    ----------
+    y_ref : array
+        Reference labels (binary).
+    y_pred_score : array
+        Predicted scores.
+    plot : bool
+        If true, plot ROC curve
+
+    Returns
+    -------
+    best_threshold : float
+        threshold on score that maximized f1 score
+    max_fscore : float
+        f1 score achieved at best_threshold
+    """
     fpr, tpr, thresholds = \
-            metrics.roc_curve(Y_ref, Y_pred_score, pos_label=1)
+            metrics.roc_curve(y_ref, y_pred_score, pos_label=1)
 
-    P = 1 - fpr
-    R = tpr
+    precision = 1 - fpr
+    recall = tpr
 
-    f_scores = 2*(P*R)/(P+R)
+    f_scores = 2.0*(precision*recall)/(precision+recall)
 
     max_fscore = f_scores[np.argmax(f_scores)]
-    best_threshold =  thresholds[np.argmax(f_scores)]
+    best_threshold = thresholds[np.argmax(f_scores)]
 
     if plot:
         plt.plot(fpr, tpr, 'b', label='ROC curve')

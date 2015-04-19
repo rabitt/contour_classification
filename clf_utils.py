@@ -6,15 +6,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def cross_val_sweep(X_train, Y_train, max_search=100,
+def cross_val_sweep(x_train, y_train, max_search=100,
                     step=5, plot=True):
     """ Choose best parameter by performing cross fold validation
 
     Parameters
     ----------
-    X_train : np.array [n_samples, n_features]
+    x_train : np.array [n_samples, n_features]
         Training features.
-    Y_train : np.array [n_samples]
+    y_train : np.array [n_samples]
         Training labels
     max_search : int
         Maximum depth value to sweep
@@ -35,7 +35,7 @@ def cross_val_sweep(X_train, Y_train, max_search=100,
         print "training with max_depth=%s" % max_depth
         clf = RFC(n_estimators=100, max_depth=max_depth, n_jobs=-1,
                   class_weight='auto')
-        all_scores = cross_validation.cross_val_score(clf, X_train, Y_train,
+        all_scores = cross_validation.cross_val_score(clf, x_train, y_train,
                                                       cv=5)
         scores.append([max_depth, np.mean(all_scores), np.std(all_scores)])
 
@@ -56,14 +56,14 @@ def cross_val_sweep(X_train, Y_train, max_search=100,
     return best_depth, max_cv_accuracy
 
 
-def train_clf(X_train, Y_train, best_depth):
+def train_clf(x_train, y_train, best_depth):
     """ Train classifier.
 
     Parameters
     ----------
-    X_train : np.array [n_samples, n_features]
+    x_train : np.array [n_samples, n_features]
         Training features.
-    Y_train : np.array [n_samples]
+    y_train : np.array [n_samples]
         Training labels
     best_depth : int
         Optimal max_depth parameter
@@ -75,47 +75,47 @@ def train_clf(X_train, Y_train, best_depth):
     """
     clf = RFC(n_estimators=100, max_depth=best_depth, n_jobs=-1,
               class_weight='auto')
-    clf = clf.fit(X_train, Y_train)
+    clf = clf.fit(x_train, y_train)
     return clf
 
 
-def clf_predictions(X_train, X_valid, X_test, clf):
+def clf_predictions(x_train, x_valid, x_test, clf):
     """ Compute probability predictions for all training and test examples.
 
     Parameters
     ----------
-    X_train : np.array [n_samples, n_features]
+    x_train : np.array [n_samples, n_features]
         Training features.
-    X_test : np.array [n_samples, n_features]
+    x_test : np.array [n_samples, n_features]
         Testing features.
     clf : classifier
         Trained scikit-learn classifier
 
     Returns
     -------
-    P_train : np.array [n_samples]
+    p_train : np.array [n_samples]
         predicted probabilities for training set
-    P_test : np.array [n_samples]
+    p_test : np.array [n_samples]
         predicted probabilities for testing set
     """
-    P_train = clf.predict_proba(X_train)[:, 1]
-    P_valid = clf.predict_proba(X_valid)[:, 1]
-    P_test = clf.predict_proba(X_test)[:, 1]
-    return P_train, P_valid, P_test
+    p_train = clf.predict_proba(x_train)[:, 1]
+    p_valid = clf.predict_proba(x_valid)[:, 1]
+    p_test = clf.predict_proba(x_test)[:, 1]
+    return p_train, p_valid, p_test
 
 
-def clf_metrics(P_train, P_test, Y_train, Y_test):
+def clf_metrics(p_train, p_test, y_train, y_test):
     """ Compute metrics on classifier predictions
 
     Parameters
     ----------
-    P_train : np.array [n_samples]
+    p_train : np.array [n_samples]
         predicted probabilities for training set
-    P_test : np.array [n_samples]
+    p_test : np.array [n_samples]
         predicted probabilities for testing set
-    Y_train : np.array [n_samples]
+    y_train : np.array [n_samples]
         Training labels.
-    Y_test : np.array [n_samples]
+    y_test : np.array [n_samples]
         Testing labels.
 
     Returns
@@ -123,24 +123,24 @@ def clf_metrics(P_train, P_test, Y_train, Y_test):
     clf_scores : dict
         classifier scores for training set
     """
-    Y_pred_train = 1*(P_train >= 0.5)
-    Y_pred_test = 1*(P_test >= 0.5)
+    y_pred_train = 1*(p_train >= 0.5)
+    y_pred_test = 1*(p_test >= 0.5)
 
     train_scores = {}
     test_scores = {}
 
-    train_scores['accuracy'] = metrics.accuracy_score(Y_train, Y_pred_train)
-    test_scores['accuracy'] = metrics.accuracy_score(Y_test, Y_pred_test)
+    train_scores['accuracy'] = metrics.accuracy_score(y_train, y_pred_train)
+    test_scores['accuracy'] = metrics.accuracy_score(y_test, y_pred_test)
 
     train_scores['confusion matrix'] = \
-        metrics.confusion_matrix(Y_train, Y_pred_train, labels=[0, 1])
+        metrics.confusion_matrix(y_train, y_pred_train, labels=[0, 1])
     test_scores['confusion matrix'] = \
-        metrics.confusion_matrix(Y_test, Y_pred_test, labels=[0, 1])
+        metrics.confusion_matrix(y_test, y_pred_test, labels=[0, 1])
 
     train_scores['auc score'] = \
-        metrics.roc_auc_score(Y_train, P_train + 1, average='weighted')
+        metrics.roc_auc_score(y_train, p_train + 1, average='weighted')
     test_scores['auc score'] = \
-        metrics.roc_auc_score(Y_test, P_test + 1, average='weighted')
+        metrics.roc_auc_score(y_test, p_test + 1, average='weighted')
 
     clf_scores = {'train': train_scores, 'test': test_scores}
 

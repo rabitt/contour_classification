@@ -6,6 +6,20 @@ import mir_eval
 
 
 def melody_from_clf(contour_data, prob_thresh=0.5):
+    """ Compute output melody using classifier output.
+
+    Parameters
+    ----------
+    contour_data : DataFrame or dict of DataFrames
+        DataFrame containing labeled features.
+    prob_thresh : float
+        Threshold that determines positive class
+
+    Returns
+    -------
+    mel_output : Series
+        Pandas Series with time stamp as index and f0 as values
+    """
 
     # remove contours below probability threshold
     contour_candidates = contour_data[contour_data['mel prob'] >= prob_thresh]
@@ -54,12 +68,24 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
     mel_output = pd.Series(np.zeros(mel_time_idx.shape), index=mel_time_idx)
     mel_output.iloc[mel_dat['reidx']] = mel_dat['f0'].values
 
-    # mel_output.to_csv('/Users/rachelbittner/Desktop/mel_out2.csv', header=False)
-
     return mel_output
 
 
 def score_melodies(mel_output_dict, test_annot_dict):
+    """ Score melody output against ground truth.
+
+    Parameters
+    ----------
+    mel_output_dict : dict of Series
+        Dictionary of melody output series keyed by trackid
+    test_annot_dict : dict of DataFrames
+        Dictionary of DataFrames containing annotations.
+
+    Returns
+    -------
+    melody_scores : dict
+        melody evaluation metrics for each track
+    """
     melody_scores = {}
     print "Scoring..."
     for key in mel_output_dict.keys():
