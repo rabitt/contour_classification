@@ -80,15 +80,15 @@ def run_experiments(mel_type, outdir):
                                test_contour_dict, olap_thresh)
 
             print "scoring with multivariate gaussian"
-            multivariate_gaussian(x_train, y_train, x_test, y_test, outdir2)
+            multivariate_gaussian(x_train, y_train, x_test, y_test, outdir3)
 
             print "training and scoring classifier"
             clf, best_thresh = classifier(x_train, y_train, x_valid, y_valid,
-                                          x_test, y_test, outdir2)
+                                          x_test, y_test, outdir3)
 
             print "computing melody output"
             melody_output(clf, best_thresh, test_contour_dict, test_annot_dict,
-                          outdir2)
+                          outdir3)
 
 
 def compute_labels(train_contour_dict, valid_contour_dict, \
@@ -128,8 +128,9 @@ def multivariate_gaussian(x_train, y_train, x_test, y_test, outdir):
     fpath = os.path.join(outdir, 'melodiness_scores.csv')
     melodiness_scores.to_csv(fpath)
 
-    print best_thresh
-    print max_fscore
+    print "Melodiness best thresh = %s" % best_thresh
+    print "Melodiness max f1 score = %s" % max_fscore
+    print "overall melodiness scores:"
     print melodiness_scores
 
 
@@ -139,7 +140,7 @@ def classifier(x_train, y_train, x_valid, y_valid, x_test, y_test, outdir):
 
     # Cross Validation
     best_depth, _ = cu.cross_val_sweep(x_train, y_train)
-    print best_depth
+    print "Classifier best depth = %s" % best_depth
 
     # Training
     clf = cu.train_clf(x_train, y_train, best_depth)
@@ -147,11 +148,14 @@ def classifier(x_train, y_train, x_valid, y_valid, x_test, y_test, outdir):
     # Predict and Score
     p_train, p_valid, p_test = cu.clf_predictions(x_train, x_valid, x_test, clf)
     clf_scores = cu.clf_metrics(p_train, p_test, y_train, y_test)
+    print "Classifier scores:"
     print clf_scores
 
     # Get threshold that maximizes F1 score
-    clf_scores['best_thresh'], clf_scores['max_fscore'] = \
-        eu.get_best_threshold(y_valid, p_valid)
+    best_thresh, max_fscore = eu.get_best_threshold(y_valid, p_valid)
+
+    clf_scores['best_thresh'] = best_thresh
+    clf_scores['max_fscore'] = max_fscore
 
     clf_scores = pd.DataFrame.from_dict(clf_scores)
     fpath = os.path.join(outdir, 'classifier_scores.csv')
@@ -160,10 +164,10 @@ def classifier(x_train, y_train, x_valid, y_valid, x_test, y_test, outdir):
     clf_fpath = os.path.join(outdir, 'rf_clf.pkl')
     joblib.dump(clf, clf_fpath)
 
-    print clf_scores['best_thresh']
-    print clf_scores['max_fscore']
+    print "Classifier best threshold = %s" % best_thresh
+    print "Classifier maximum f1 score = %s" % max_fscore
 
-    return clf, clf_scores['best_thresh']
+    return clf, best_thresh
 
 
 def melody_output(clf, best_thresh, test_contour_dict, test_annot_dict, outdir):
@@ -185,7 +189,7 @@ def melody_output(clf, best_thresh, test_contour_dict, test_annot_dict, outdir):
         mel_output_dict[key] = gm.melody_from_clf(test_contour_dict[key],
                                                   prob_thresh=best_thresh)
         fpath = os.path.join(meldir, "%s_pred.csv")
-        mel_output_dict[key].to_csv(fpath, columns=False, index=True)
+        mel_output_dict[key].to_csv(fpath, header=False, index=True)
 
     # Score Melody Output
     mel_scores = gm.score_melodies(mel_output_dict, test_annot_dict)
