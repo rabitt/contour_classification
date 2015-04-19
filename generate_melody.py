@@ -8,13 +8,17 @@ import mir_eval
 def melody_from_clf(contour_data, prob_thresh=0.5):
 
     # remove contours below probability threshold
-    contour_candidates = contour_data[contour_data['mel_prob'] >= prob_thresh]
-    probs = contour_candidates['mel_prob']
-    
+    contour_candidates = contour_data[contour_data['mel prob'] >= prob_thresh]
+    probs = contour_candidates['mel prob']
+
+    if len(contour_candidates) == 0:
+        print "Warning: no contours above threshold."
+        return None
+
     # get separate DataFrames of contour time, frequency, and probability
     contour_times, contour_freqs, _ = \
         cc.contours_from_contour_data(contour_candidates, n_end=4)
-    contour_probs = pd.concat([probs]*contour_times.shape[1], axis=1, 
+    contour_probs = pd.concat([probs]*contour_times.shape[1], axis=1,
                               ignore_index=True)
 
     # create DataFrame with all unwrapped [time, frequency, probability] values.
@@ -34,7 +38,7 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
     # compute evenly spaced time grid for output
     step_size = 128.0/44100.0  # contour time stamp step size
     mel_time_idx = np.arange(0, np.max(mel_dat['time'].values) + 1, step_size)
-    
+
     # find index in evenly spaced grid of estimated time values
     old_times = mel_dat['time'].values
     reidx = np.searchsorted(mel_time_idx, old_times)
@@ -46,7 +50,7 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
     mel_dat['reidx'] = reidx
     mel_dat.drop_duplicates(subset='reidx', take_last=True, inplace=True)
 
-    # 
+    #
     mel_output = pd.Series(np.zeros(mel_time_idx.shape), index=mel_time_idx)
     mel_output.iloc[mel_dat['reidx']] = mel_dat['f0'].values
 
@@ -57,11 +61,18 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
 
 def score_melodies(mel_output_dict, test_annot_dict):
     melody_scores = {}
+    print "Scoring..."
     for key in mel_output_dict.keys():
+        print key
+        if mel_output_dict[key] is None:
+            print "skipping..."
+            continue
         ref = test_annot_dict[key]
         est = mel_output_dict[key]
-        melody_scores[key] = mir_eval.melody.evaluate(ref['time'], ref['f0'], 
-                                                      est['time'], est['f0'])
+        melody_scores[key] = mir_eval.melody.evaluate(ref['time'].values,
+                                                      ref['f0'].values,
+                                                      np.array(est.index),
+                                                      est.values)
 
     return melody_scores
 
