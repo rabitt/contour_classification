@@ -233,7 +233,7 @@ def get_best_threshold(y_ref, y_pred_score, plot=True):
         plt.ylim([0.0, 1.0])
         plt.xlabel('False Positive Rate')
         plt.ylabel('True Positive Rate')
-        plt.title('Melodiness Receiver operating characteristic')
+        plt.title('Receiver Operating Characteristic')
         plt.legend(loc="lower right")
         plt.show()
 
