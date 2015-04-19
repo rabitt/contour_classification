@@ -74,75 +74,38 @@ def get_data_files(track, meltype=1):
     return cdat, adat
 
 
-def compute_all_overlaps(train_tracks, valid_tracks, test_tracks, meltype):
+def compute_all_overlaps(track_list, meltype):
     """ Compute each contour's overlap with annotation.
 
     Parameters
     ----------
-    train_tracks : list
-        List of trackids in training set
-    valid_tracks : list
-        List of trackids in validation set
-    test_tracks : list
-        List of trackids in test set
+    track_list : list
+        List of all trackids
     meltype : int
         One of [1,2,3]
 
     Returns
     -------
-    train_contour_dict : dict of DataFrames
-        Dict of train dataframes keyed by trackid
-    valid_contour_dict : dict of DataFrames
-        Dict of validation dataframes keyed by trackid
-    test_contour_dict : dict of DataFrames
-        Dict of test dataframes keyed by trackid
+    dset_contour_dict : dict of DataFrames
+        Dict of dataframes keyed by trackid
+    dset_annot_dict : dict of dataframes
+        dict of annotation dataframes keyed by trackid
     """
 
-    train_contour_dict = {}
+    dset_contour_dict = {}
+    dset_annot_dict = {}
 
-    msg = "Generating training features..."
-    num_spaces = len(train_tracks) - len(msg)
+    msg = "Generating features..."
+    num_spaces = len(track_list) - len(msg)
     print msg + ' '*num_spaces + '|'
 
-    for track in train_tracks:
+    for track in track_list:
         cdat, adat = get_data_files(track, meltype=meltype)
-        train_contour_dict[track] = cc.compute_overlap(cdat, adat)
+        dset_annot_dict[track] = adat.copy()
+        dset_contour_dict[track] = cc.compute_overlap(cdat, adat)
         sys.stdout.write('.')
 
-    print ""
-    print "-"*30
-
-    valid_contour_dict = {}
-    valid_annot_dict = {}
-
-    msg = "Generating validation features..."
-    num_spaces = len(valid_tracks) - len(msg)
-    print msg + ' '*num_spaces + '|'
-
-    for track in valid_tracks:
-        cdat, adat = get_data_files(track, meltype=meltype)
-        valid_annot_dict[track] = adat.copy()
-        valid_contour_dict[track] = cc.compute_overlap(cdat, adat)
-        sys.stdout.write('.')
-
-    print ""
-    print "-"*30
-
-    test_contour_dict = {}
-    test_annot_dict = {}
-
-    msg = "Generating testing features..."
-    num_spaces = len(test_tracks) - len(msg)
-    print msg + ' '*num_spaces + '|'
-
-    for track in test_tracks:
-        cdat, adat = get_data_files(track, meltype=meltype)
-        test_annot_dict[track] = adat.copy()
-        test_contour_dict[track] = cc.compute_overlap(cdat, adat)
-        sys.stdout.write('.')
-
-    return train_contour_dict, valid_contour_dict, valid_annot_dict, \
-           test_contour_dict, test_annot_dict
+    return dset_contour_dict, dset_annot_dict
 
 
 def olap_stats(train_contour_dict):
