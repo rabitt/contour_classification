@@ -6,7 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def cross_val_sweep(X_train, Y_train, max_search=100, step=5, plot=True):
+def cross_val_sweep(X_train, Y_train, max_search=100,
+                    step=5, plot=True):
     """ Choose best parameter by performing cross fold validation
 
     Parameters
@@ -32,9 +33,9 @@ def cross_val_sweep(X_train, Y_train, max_search=100, step=5, plot=True):
     scores = []
     for max_depth in np.arange(5, max_search, step):
         print "training with max_depth=%s" % max_depth
-        clf = RFC(n_estimators=100, max_depth=max_depth, n_jobs=-1, 
+        clf = RFC(n_estimators=100, max_depth=max_depth, n_jobs=-1,
                   class_weight='auto')
-        all_scores = cross_validation.cross_val_score(clf, X_train, Y_train, 
+        all_scores = cross_validation.cross_val_score(clf, X_train, Y_train,
                                                       cv=5)
         scores.append([max_depth, np.mean(all_scores), np.std(all_scores)])
 
@@ -72,13 +73,13 @@ def train_clf(X_train, Y_train, best_depth):
     clf : classifier
         Trained scikit-learn classifier
     """
-    clf = RFC(n_estimators=100, max_depth=best_depth, n_jobs=-1, 
+    clf = RFC(n_estimators=100, max_depth=best_depth, n_jobs=-1,
               class_weight='auto')
     clf = clf.fit(X_train, Y_train)
     return clf
 
 
-def clf_predictions(X_train, X_test, clf):
+def clf_predictions(X_train, X_valid, X_test, clf):
     """ Compute probability predictions for all training and test examples.
 
     Parameters
@@ -96,10 +97,11 @@ def clf_predictions(X_train, X_test, clf):
         predicted probabilities for training set
     P_test : np.array [n_samples]
         predicted probabilities for testing set
-    """ 
-    P_train = clf.predict_proba(X_train)
-    P_test = clf.predict_proba(X_test)
-    return P_train, P_test
+    """
+    P_train = clf.predict_proba(X_train)[:, 1]
+    P_valid = clf.predict_proba(X_valid)[:, 1]
+    P_test = clf.predict_proba(X_test)[:, 1]
+    return P_train, P_valid, P_test
 
 
 def clf_metrics(P_train, P_test, Y_train, Y_test):
@@ -120,7 +122,7 @@ def clf_metrics(P_train, P_test, Y_train, Y_test):
     -------
     clf_scores : dict
         classifier scores for training set
-    """ 
+    """
     Y_pred_train = 1*(P_train >= 0.5)
     Y_pred_test = 1*(P_test >= 0.5)
 
