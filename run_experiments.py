@@ -188,7 +188,7 @@ def melody_output(clf, best_thresh, test_contour_dict, test_annot_dict, outdir):
     for key in test_contour_dict.keys():
         mel_output_dict[key] = gm.melody_from_clf(test_contour_dict[key],
                                                   prob_thresh=best_thresh)
-        fpath = os.path.join(meldir, "%s_pred.csv")
+        fpath = os.path.join(meldir, "%s_pred.csv" % key)
         mel_output_dict[key].to_csv(fpath, header=False, index=True)
 
     # Score Melody Output
