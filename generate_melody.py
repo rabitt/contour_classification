@@ -24,6 +24,7 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
     # remove contours below probability threshold
     contour_candidates = contour_data[contour_data['mel prob'] >= prob_thresh]
     probs = contour_candidates['mel prob']
+    contour_num = pd.DataFrame(np.array(contour_candidates.index))
 
     if len(contour_candidates) == 0:
         print "Warning: no contours above threshold."
@@ -34,12 +35,15 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
         cc.contours_from_contour_data(contour_candidates, n_end=4)
     contour_probs = pd.concat([probs]*contour_times.shape[1], axis=1,
                               ignore_index=True)
+    contour_nums = pd.concat([contour_num]*contour_times.shape[1], axis=1,
+                             ignore_index=True)
 
     # create DataFrame with all unwrapped [time, frequency, probability] values.
-    mel_dat = pd.DataFrame(columns=['time', 'f0', 'probability'])
+    mel_dat = pd.DataFrame(columns=['time', 'f0', 'probability', 'c_num'])
     mel_dat['time'] = contour_times.values.ravel()
     mel_dat['f0'] = contour_freqs.values.ravel()
     mel_dat['probability'] = contour_probs.values.ravel()
+    mel_dat['c_num'] = contour_nums.values.ravel()
 
     # remove rows with NaNs
     mel_dat.dropna(inplace=True)
@@ -48,6 +52,8 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
     # duplicate times with have maximum probability value at the end
     mel_dat.sort(columns='probability', inplace=True)
     mel_dat.sort(columns='time', inplace=True)
+
+    print mel_dat.head()
 
     # compute evenly spaced time grid for output
     step_size = 128.0/44100.0  # contour time stamp step size
