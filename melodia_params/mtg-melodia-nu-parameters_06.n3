@@ -1,0 +1,34 @@
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+@prefix vamp:     <http://purl.org/ontology/vamp/> .
+@prefix plugbase: <http://vamp-plugins.org/rdf/plugins/mtg-melodia-nu#> .
+@prefix owl:      <http://www.w3.org/2002/07/owl#> .
+@prefix dc:       <http://purl.org/dc/elements/1.1/> .
+@prefix af:       <http://purl.org/ontology/af/> .
+@prefix foaf:     <http://xmlns.com/foaf/0.1/> .
+@prefix cc:       <http://web.resource.org/cc/> .
+@prefix :         <#> .
+
+:transform0 a vamp:Transform;
+	vamp:plugin plugbase:melodianu;
+	vamp:output plugbase:melodianu_output_melody;
+	vamp:parameter_binding :param0;
+	vamp:parameter_binding :param1;
+	vamp:parameter_binding :param2;
+	vamp:parameter_binding :param3.
+	
+:param0 a vamp:ParameterBinding;
+	vamp:parameter [ vamp:identifier "minfqr" ];
+	vamp:value "55.0".
+
+:param1 a vamp:ParameterBinding;
+	vamp:parameter [ vamp:identifier "maxfqr" ];
+	vamp:value "1760".
+
+:param2 a vamp:ParameterBinding;
+	vamp:parameter [ vamp:identifier "voicing" ];
+	vamp:value "6.0".
+
+:param3 a vamp:ParameterBinding;
+	vamp:parameter [ vamp:identifier "minpeaksalience" ];
+	vamp:value "0.0".
