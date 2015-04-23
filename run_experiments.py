@@ -42,6 +42,8 @@ def run_experiments(mel_type, outdir):
             os.mkdir(outdir2)
         outdir2 = os.path.join(outdir2)
 
+        with open()
+
         split_num = split_num + 1
 
         random.shuffle(train)
