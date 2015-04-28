@@ -21,25 +21,27 @@ def melody_from_clf(contour_data, prob_thresh=0.5, penalty=0):
         Pandas Series with time stamp as index and f0 as values
     """
 
-    # split by probability threshold
-    contour_candidates = contour_data[contour_data['mel prob'] >= prob_thresh]
+    contour_threshed = contour_data[contour_data['mel prob'] >= prob_thresh]
 
-    probs = contour_candidates['mel prob']
-
-    contour_num = pd.DataFrame(np.array(contour_candidates.index))
-
-    if len(contour_candidates) == 0:
+    if len(contour_threshed) == 0:
         print "Warning: no contours above threshold."
         return None
 
     # get separate DataFrames of contour time, frequency, and probability
     contour_times, contour_freqs, _ = \
-        cc.contours_from_contour_data(contour_candidates, n_end=4)
+        cc.contours_from_contour_data(contour_threshed, n_end=4)
 
+    # make frequencies below probability threshold negative
+    #contour_freqs[contour_data['mel prob'] < prob_thresh] *= -1.0
+
+    probs = contour_threshed['mel prob']
     contour_probs = pd.concat([probs]*contour_times.shape[1], axis=1,
                               ignore_index=True)
+
+    contour_num = pd.DataFrame(np.array(contour_threshed.index))
     contour_nums = pd.concat([contour_num]*contour_times.shape[1], axis=1,
                              ignore_index=True)
+
     avg_freq = contour_freqs.mean(axis=1)
 
     # create DataFrame with all unwrapped [time, frequency, probability] values.
@@ -82,7 +84,7 @@ def melody_from_clf(contour_data, prob_thresh=0.5, penalty=0):
     mel_output.iloc[not_duplicates['reidx']] = not_duplicates['f0'].values
 
     dups = mel_dat[duplicates]
-    dups['groupnum'] = (dups['reidx'].diff() > 1).cumsum().copy()
+    dups['groupnum'] = (dups.loc[:, 'reidx'].diff() > 1).cumsum().copy()
     groups = dups.groupby('groupnum')
 
     for _, group in groups:
@@ -91,23 +93,24 @@ def melody_from_clf(contour_data, prob_thresh=0.5, penalty=0):
         times = np.unique(group['reidx'])
 
         posterior = group[['probability', 'c_num', 'reidx']].pivot_table(
-            'probability', index='reidx', 
-            columns='c_num', 
+            'probability', index='reidx',
+            columns='c_num',
             fill_value=0.0).as_matrix()
 
         f0_vals = group[['f0', 'c_num', 'reidx']].pivot_table(
-            'f0', index='reidx', 
-            columns='c_num', 
+            'f0', index='reidx',
+            columns='c_num',
             fill_value=0.0).as_matrix()
 
+        #posterior[np.where(f0_vals < prob_thresh)] = 0 #1e-10
+
         # build transition matrix from log distance between center frequency
-        transition_matrix = np.abs(np.log2(center_freqs.values)[np.newaxis, :] - 
-                                   np.log2(center_freqs.values)[:, np.newaxis])
-        transition_matrix = normalize(transition_matrix, axis=1)
-        transition_matrix = 1 - transition_matrix
+        transition_matrix = np.log2(center_freqs.values)[np.newaxis, :] - \
+                            np.log2(center_freqs.values)[:, np.newaxis]
+        transition_matrix = 1 - normalize(np.abs(transition_matrix), axis=1)
         transition_matrix = normalize(transition_matrix, axis=1)
 
-        path = viterbi(posterior, transition_matrix=transition_matrix, 
+        path = viterbi(posterior, transition_matrix=transition_matrix,
                        prior=None, penalty=penalty)
 
         mel_output.iloc[times] = f0_vals[np.arange(len(path)), path]
