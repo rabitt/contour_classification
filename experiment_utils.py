@@ -215,26 +215,39 @@ def get_best_threshold(y_ref, y_pred_score, plot=True):
     max_fscore : float
         f1 score achieved at best_threshold
     """
-    fpr, tpr, thresholds = \
-            metrics.roc_curve(y_ref, y_pred_score, pos_label=1)
+    pos_weight = 1.0 - float(len(y_ref[y_ref == 1]))/float(len(y_ref))
+    neg_weight = 1.0 - float(len(y_ref[y_ref == 0]))/float(len(y_ref))
+    sample_weight = np.zeros(y_ref.shape)
+    sample_weight[y_ref == 1] = pos_weight
+    sample_weight[y_ref == 0] = neg_weight
 
-    precision = 1 - fpr
-    recall = tpr
+    print "max prediction value = %s" % np.max(y_pred_score)
+    print "min prediction value = %s" % np.min(y_pred_score)
 
-    f_scores = 2.0*(precision*recall)/(precision+recall)
+    precision, recall, thresholds = \
+            metrics.precision_recall_curve(y_ref, y_pred_score, pos_label=1,
+                                           sample_weight=sample_weight)
+    beta = 1.0
+    btasq = beta**2.0
+    fbeta_scores = (1.0 + btasq)*(precision*recall)/((btasq*precision)+recall)
 
-    max_fscore = f_scores[np.argmax(f_scores)]
-    best_threshold = thresholds[np.argmax(f_scores)]
+    max_fscore = fbeta_scores[np.nanargmax(fbeta_scores)]
+    best_threshold = thresholds[np.nanargmax(fbeta_scores)]
 
     if plot:
-        plt.plot(fpr, tpr, 'b', label='ROC curve')
-        plt.plot([0, 1], [0, 1], 'k--')
+        plt.figure(1)
+        plt.subplot(1, 2, 1)
+        plt.plot(recall, precision, '.b', label='PR curve')
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.0])
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
-        plt.title('Receiver Operating Characteristic')
-        plt.legend(loc="lower right")
+        plt.xlabel('Recall')
+        plt.ylabel('Precision')
+        plt.title('Precision-Recall Curve')
+        plt.legend(loc="lower right", frameon=True)
+        plt.subplot(1, 2, 2)
+        plt.plot(thresholds, fbeta_scores[:-1], '.r', label='f1-score')
+        plt.xlabel('Probability Threshold')
+        plt.ylabel('F1 score')
         plt.show()
 
     return best_threshold, max_fscore
