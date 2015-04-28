@@ -34,7 +34,7 @@ def cross_val_sweep(x_train, y_train, max_search=100,
     for max_depth in np.arange(5, max_search, step):
         print "training with max_depth=%s" % max_depth
         clf = RFC(n_estimators=100, max_depth=max_depth, n_jobs=-1,
-                  class_weight='auto')
+                  class_weight='auto', max_features=None)
         all_scores = cross_validation.cross_val_score(clf, x_train, y_train,
                                                       cv=5)
         scores.append([max_depth, np.mean(all_scores), np.std(all_scores)])
@@ -74,7 +74,7 @@ def train_clf(x_train, y_train, best_depth):
         Trained scikit-learn classifier
     """
     clf = RFC(n_estimators=100, max_depth=best_depth, n_jobs=-1,
-              class_weight='auto')
+              class_weight='auto', max_features=None)
     clf = clf.fit(x_train, y_train)
     return clf
 
