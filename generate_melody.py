@@ -5,7 +5,7 @@ import numpy as np
 import mir_eval
 
 
-def melody_from_clf(contour_data, prob_thresh=0.5):
+def melody_from_clf(contour_data, prob_thresh=0.5, penalty=0):
     """ Compute output melody using classifier output.
 
     Parameters
@@ -21,10 +21,15 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
         Pandas Series with time stamp as index and f0 as values
     """
 
-    # remove contours below probability threshold
+    # split by probability threshold
     contour_candidates = contour_data[contour_data['mel prob'] >= prob_thresh]
+    non_candidates = contour_data[contour_data['mel prob'] < prob_thresh]
+
     probs = contour_candidates['mel prob']
+    non_probs = non_candidates['mel prob']
+
     contour_num = pd.DataFrame(np.array(contour_candidates.index))
+    non_contour_num = pd.DataFrame(np.array(non_candidates.index))
 
     if len(contour_candidates) == 0:
         print "Warning: no contours above threshold."
@@ -33,10 +38,18 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
     # get separate DataFrames of contour time, frequency, and probability
     contour_times, contour_freqs, _ = \
         cc.contours_from_contour_data(contour_candidates, n_end=4)
+    non_contour_times, non_contour_freqs, _ = \
+        cc.contours_from_contour_data(non_candidates, n_end=4)
+
     contour_probs = pd.concat([probs]*contour_times.shape[1], axis=1,
                               ignore_index=True)
+    non_contour_probs = pd.concat([non_probs]*non_contour_times.shape[1], 
+                                  axis=1, ignore_index=True)
     contour_nums = pd.concat([contour_num]*contour_times.shape[1], axis=1,
                              ignore_index=True)
+    non_contour_nums = pd.concat([non_contour_num]*non_contour_times.shape[1], 
+                                 axis=1, ignore_index=True)
+    avg_freq = contour_freqs.mean(axis=1)
 
     # create DataFrame with all unwrapped [time, frequency, probability] values.
     mel_dat = pd.DataFrame(columns=['time', 'f0', 'probability', 'c_num'])
@@ -45,15 +58,22 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
     mel_dat['probability'] = contour_probs.values.ravel()
     mel_dat['c_num'] = contour_nums.values.ravel()
 
+    non_mel_dat = pd.DataFrame(columns=['time', 'f0', 'probability'])
+    non_mel_dat['time'] = non_contour_times.values.ravel()
+    non_mel_dat['f0'] = non_contour_freqs.values.ravel()
+    non_mel_dat['probability'] = non_contour_probs.values.ravel()
+
     # remove rows with NaNs
     mel_dat.dropna(inplace=True)
+    non_mel_dat.dropna(inplace=True)
 
     # sort by probability then by time
     # duplicate times with have maximum probability value at the end
     mel_dat.sort(columns='probability', inplace=True)
     mel_dat.sort(columns='time', inplace=True)
 
-    print mel_dat.head()
+    non_mel_dat.sort(columns='probability', inplace=True)
+    non_mel_dat.sort(columns='time', inplace=True)
 
     # compute evenly spaced time grid for output
     step_size = 128.0/44100.0  # contour time stamp step size
@@ -66,13 +86,64 @@ def melody_from_clf(contour_data, prob_thresh=0.5):
                  np.abs(old_times - mel_time_idx[reidx]))
     reidx[shift_idx] = reidx[shift_idx] - 1
 
-    # remove duplicate time values
-    mel_dat['reidx'] = reidx
-    mel_dat.drop_duplicates(subset='reidx', take_last=True, inplace=True)
+    non_old_times = non_mel_dat['time'].values
+    non_reidx = np.searchsorted(mel_time_idx, non_old_times)
+    non_shift_idx = (np.abs(non_old_times - mel_time_idx[non_reidx - 1]) < \
+                     np.abs(non_old_times - mel_time_idx[non_reidx]))
+    non_reidx[non_shift_idx] = non_reidx[non_shift_idx] - 1
 
-    #
+    # find duplicate time values
+    mel_dat['reidx'] = reidx
+    duplicates = mel_dat.duplicated(subset='reidx') | \
+                 mel_dat.duplicated(subset='reidx', take_last=True)
+
+    non_mel_dat['reidx'] = non_reidx
+    non_mel_dat.drop_duplicates(subset='reidx', take_last=True, inplace=True)
+
+    not_duplicates = mel_dat[~duplicates]
+
+    # initialize output melody
     mel_output = pd.Series(np.zeros(mel_time_idx.shape), index=mel_time_idx)
-    mel_output.iloc[mel_dat['reidx']] = mel_dat['f0'].values
+
+    # fill non-duplicate values
+    mel_output.iloc[not_duplicates['reidx']] = not_duplicates['f0'].values
+
+    dups = mel_dat[duplicates]
+    dups['groupnum'] = (dups['reidx'].diff() > 1).cumsum().copy()
+    groups = dups.groupby('groupnum')
+
+    for _, group in groups:
+        states = np.unique(group['c_num'])
+        center_freqs = avg_freq.loc[states]
+        times = np.unique(group['reidx'])
+
+        posterior = group[['probability', 'c_num', 'reidx']].pivot_table(
+            'probability', index='reidx', 
+            columns='c_num', 
+            fill_value=0.0).as_matrix()
+
+        f0_vals = group[['f0', 'c_num', 'reidx']].pivot_table(
+            'f0', index='reidx', 
+            columns='c_num', 
+            fill_value=0.0).as_matrix()
+
+        # build transition matrix from log distance between center frequency
+        transition_matrix = np.abs(np.log2(center_freqs.values)[np.newaxis, :] - 
+                                   np.log2(center_freqs.values)[:, np.newaxis])
+        transition_matrix = normalize(transition_matrix, axis=1)
+        transition_matrix = 1 - transition_matrix
+        transition_matrix = normalize(transition_matrix, axis=1)
+
+        path = viterbi(posterior, transition_matrix=transition_matrix, 
+                       prior=None, penalty=penalty)
+
+        mel_output.iloc[times] = f0_vals[np.arange(len(path)), path]
+
+    # fill remaining empty values with negatives of the unvoiced data
+    empty_rows = np.arange(len(mel_output))[mel_output == 0]
+    neg_fill_rows = np.intersect1d(empty_rows, non_mel_dat['reidx'].values)
+    neg_fill = non_mel_dat.iloc[neg_fill_rows]
+    mel_output.iloc[neg_fill['reidx']] = -1.0*(neg_fill['f0'].values)
 
     return mel_output
 
@@ -109,3 +180,95 @@ def score_melodies(mel_output_dict, test_annot_dict):
     return melody_scores
 
 
+def viterbi(posterior, transition_matrix=None, prior=None, penalty=0,
+            scaled=True):
+    """Find the optimal Viterbi path through a posteriorgram.
+    Ported closely from Tae Min Cho's MATLAB implementation.
+    Parameters
+    ----------
+    posterior: np.ndarray, shape=(num_obs, num_states)
+        Matrix of observations (events, time steps, etc) by the number of
+        states (classes, categories, etc), e.g.
+          posterior[t, i] = Pr(y(t) | Q(t) = i)
+    transition_matrix: np.ndarray, shape=(num_states, num_states)
+        Transition matrix for the viterbi algorithm. For clarity, each row
+        corresponds to the probability of transitioning to the next state, e.g.
+          transition_matrix[i, j] = Pr(Q(t + 1) = j | Q(t) = i)
+    prior: np.ndarray, default=None (uniform)
+        Probability distribution over the states, e.g.
+          prior[i] = Pr(Q(0) = i)
+    penalty: scalar, default=0
+        Scalar penalty to down-weight off-diagonal states.
+    scaled : bool, default=True
+        Scale transition probabilities between steps in the algorithm.
+        Note: Hard-coded to True in TMC's implementation; it's probably a bad
+        idea to change this.
+    Returns
+    -------
+    path: np.ndarray, shape=(num_obs,)
+        Optimal state indices through the posterior.
+    """
+
+    # Infer dimensions.
+    num_obs, num_states = posterior.shape
+
+    # Define the scaling function
+    scaler = normalize if scaled else lambda x: x
+    # Normalize the posterior.
+    posterior = normalize(posterior, axis=1)
+
+    if transition_matrix is None:
+        transition_matrix = np.ones([num_states]*2)
+
+    transition_matrix = normalize(transition_matrix, axis=1)
+
+    # Apply the off-axis penalty.
+    offset = np.ones([num_states]*2, dtype=float)
+    offset -= np.eye(num_states, dtype=np.float)
+    penalty = offset * np.exp(penalty) + np.eye(num_states, dtype=np.float)
+    transition_matrix = penalty * transition_matrix
+
+    # Create a uniform prior if one isn't provided.
+    prior = np.ones(num_states) / float(num_states) if prior is None else prior
+
+    # Algorithm initialization
+    delta = np.zeros_like(posterior)
+    psi = np.zeros_like(posterior)
+    path = np.zeros(num_obs, dtype=int)
+
+    idx = 0
+    delta[idx, :] = scaler(prior * posterior[idx, :])
+
+    for idx in range(1, num_obs):
+        res = delta[idx - 1, :].reshape(1, num_states) * transition_matrix
+        delta[idx, :] = scaler(np.max(res, axis=1) * posterior[idx, :])
+        psi[idx, :] = np.argmax(res, axis=1)
+
+    path[-1] = np.argmax(delta[-1, :])
+    for idx in range(num_obs - 2, -1, -1):
+        path[idx] = psi[idx + 1, path[idx + 1]]
+    return path
+
+
+def normalize(x, axis=None):
+    """Normalize the values of an ndarray to sum to 1 along the given axis.
+    Parameters
+    ----------
+    x : np.ndarray
+        Input multidimensional array to normalize.
+    axis : int, default=None
+        Axis to normalize along, otherwise performed over the full array.
+    Returns
+    -------
+    z : np.ndarray, shape=x.shape
+        Normalized array.
+    """
+    if not axis is None:
+        shape = list(x.shape)
+        shape[axis] = 1
+        scalar = x.astype(float).sum(axis=axis).reshape(shape)
+        scalar[scalar == 0] = 1.0
+    else:
+        scalar = x.sum()
+        scalar = 1 if scalar == 0 else scalar
+    return x / scalar
