@@ -52,8 +52,9 @@ def cross_val_sweep(x_train, y_train, max_search=100,
 
     best_depth = depth[np.argmax(accuracy)]
     max_cv_accuracy = np.max(accuracy)
+    plot_data = (depth, accuracy, std_dev)
 
-    return best_depth, max_cv_accuracy
+    return best_depth, max_cv_accuracy, plot_data
 
 
 def train_clf(x_train, y_train, best_depth):
@@ -131,6 +132,23 @@ def clf_metrics(p_train, p_test, y_train, y_test):
 
     train_scores['accuracy'] = metrics.accuracy_score(y_train, y_pred_train)
     test_scores['accuracy'] = metrics.accuracy_score(y_test, y_pred_test)
+
+    train_scores['mcc'] = metrics.matthews_corrcoef(y_train, y_pred_train)
+    test_scores['mcc'] = metrics.matthews_corrcoef(y_test, y_pred_test)
+
+    (p, r, f, s) = metrics.precision_recall_fscore_support(y_train,
+                                                           y_pred_train)
+    train_scores['precision'] = p
+    train_scores['recall'] = r
+    train_scores['f1'] = f
+    train_scores['support'] = s
+
+    (p, r, f, s) = metrics.precision_recall_fscore_support(y_test,
+                                                           y_pred_test)
+    test_scores['precision'] = p
+    test_scores['recall'] = r
+    test_scores['f1'] = f
+    test_scores['support'] = s
 
     train_scores['confusion matrix'] = \
         metrics.confusion_matrix(y_train, y_pred_train, labels=[0, 1])
