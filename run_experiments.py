@@ -42,8 +42,6 @@ def run_experiments(mel_type, outdir):
             os.mkdir(outdir2)
         outdir2 = os.path.join(outdir2)
 
-        with open()
-
         split_num = split_num + 1
 
         random.shuffle(train)
@@ -89,8 +87,8 @@ def run_experiments(mel_type, outdir):
                                           x_test, y_test, outdir3)
 
             print "computing melody output"
-            melody_output(clf, best_thresh, test_contour_dict, test_annot_dict,
-                          outdir3)
+            melody_output(clf, best_thresh, valid_contour_dict, valid_annot_dict,
+                          test_contour_dict, test_annot_dict, outdir3)
 
 
 def compute_labels(train_contour_dict, valid_contour_dict, \
@@ -123,8 +121,14 @@ def multivariate_gaussian(x_train, y_train, x_test, y_test, outdir):
 
     # Compute various metrics based on melodiness scores.
     melodiness_scores = mv.melodiness_metrics(m_train, m_test, y_train, y_test)
-    best_thresh, max_fscore = eu.get_best_threshold(y_test, m_test)
+    best_thresh, max_fscore, thresh_plot_data = \
+        eu.get_best_threshold(y_test, m_test)
 
+    # thresh_plot_data = pd.DataFrame(np.array(thresh_plot_data).transpose(),
+    #                                 columns=['recall', 'precision',
+    #                                          'thresh', 'f1'])
+    # fpath = os.path.join(outdir, 'thresh_plot_data.csv')
+    # thresh_plot_data.to_csv(fpath)
 
     melodiness_scores = pd.DataFrame.from_dict(melodiness_scores)
     fpath = os.path.join(outdir, 'melodiness_scores.csv')
@@ -141,8 +145,13 @@ def classifier(x_train, y_train, x_valid, y_valid, x_test, y_test, outdir):
     """
 
     # Cross Validation
-    best_depth, _ = cu.cross_val_sweep(x_train, y_train)
+    best_depth, _, cv_plot_data = cu.cross_val_sweep(x_train, y_train)
     print "Classifier best depth = %s" % best_depth
+
+    cv_plot_data = pd.DataFrame(np.array(cv_plot_data).transpose(),
+                                columns=['max depth', 'accuracy', 'std'])
+    fpath = os.path.join(outdir, 'cv_plot_data.csv')
+    cv_plot_data.to_csv(fpath)
 
     # Training
     clf = cu.train_clf(x_train, y_train, best_depth)
@@ -154,16 +163,23 @@ def classifier(x_train, y_train, x_valid, y_valid, x_test, y_test, outdir):
     print clf_scores
 
     # Get threshold that maximizes F1 score
-    best_thresh, max_fscore = eu.get_best_threshold(y_valid, p_valid)
+    best_thresh, max_fscore, thresh_plot_data = \
+        eu.get_best_threshold(y_valid, p_valid)
 
-    clf_scores['best_thresh'] = best_thresh
-    clf_scores['max_fscore'] = max_fscore
+    # thresh_plot_data = pd.DataFrame(np.array(thresh_plot_data).transpose(),
+    #                                 columns=['recall', 'precision',
+    #                                          'thresh', 'f1'])
+    # fpath = os.path.join(outdir, 'thresh_plot_data.csv')
+    # thresh_plot_data.to_csv(fpath)
 
     clf_scores = pd.DataFrame.from_dict(clf_scores)
     fpath = os.path.join(outdir, 'classifier_scores.csv')
     clf_scores.to_csv(fpath)
 
-    clf_fpath = os.path.join(outdir, 'rf_clf.pkl')
+    clf_outdir = os.path.join(outdir, 'classifier')
+    if not os.path.exists(clf_outdir):
+        os.mkdir(clf_outdir)
+    clf_fpath = os.path.join(clf_outdir, 'rf_clf.pkl')
     joblib.dump(clf, clf_fpath)
 
     print "Classifier best threshold = %s" % best_thresh
@@ -172,7 +188,8 @@ def classifier(x_train, y_train, x_valid, y_valid, x_test, y_test, outdir):
     return clf, best_thresh
 
 
-def melody_output(clf, best_thresh, test_contour_dict, test_annot_dict, outdir):
+def melody_output(clf, best_thresh, valid_contour_dict, valid_annot_dict,
+                  test_contour_dict, test_annot_dict, outdir):
     """ Generate Melody Output
     """
 
@@ -184,6 +201,37 @@ def melody_output(clf, best_thresh, test_contour_dict, test_annot_dict, outdir):
     if not os.path.exists(meldir):
         os.mkdir(meldir)
     meldir = os.path.join(meldir)
+
+    # Generate melody output using predictions
+    mel_output_dict = {}
+    for key in valid_contour_dict.keys():
+        mel_output_dict[key] = gm.melody_from_clf(valid_contour_dict[key],
+                                                  prob_thresh=best_thresh)
+        fpath = os.path.join(meldir, "%s_pred.csv" % key)
+        mel_output_dict[key].to_csv(fpath, header=False, index=True)
+
+    # Score Melody Output
+    mel_scores = gm.score_melodies(mel_output_dict, valid_annot_dict)
+
+    overall_scores = \
+        pd.DataFrame(columns=['VR', 'VFA', 'RPA', 'RCA', 'OA'],
+                     index=mel_scores.keys())
+    overall_scores['VR'] = \
+        [mel_scores[key]['Voicing Recall'] for key in mel_scores.keys()]
+    overall_scores['VFA'] = \
+        [mel_scores[key]['Voicing False Alarm'] for key in mel_scores.keys()]
+    overall_scores['RPA'] = \
+        [mel_scores[key]['Raw Pitch Accuracy'] for key in mel_scores.keys()]
+    overall_scores['RCA'] = \
+        [mel_scores[key]['Raw Chroma Accuracy'] for key in mel_scores.keys()]
+    overall_scores['OA'] = \
+        [mel_scores[key]['Overall Accuracy'] for key in mel_scores.keys()]
+
+    scores_fpath = os.path.join(outdir, "validate_mel_scores.csv")
+    overall_scores.to_csv(scores_fpath)
+
+    score_summary = os.path.join(outdir, "validate_mel_score_summary.csv")
+    overall_scores.describe().to_csv(score_summary)
 
     # Generate melody output using predictions
     mel_output_dict = {}
