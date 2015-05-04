@@ -231,45 +231,80 @@ def label_contours(contour_data, olap_thresh):
     return contour_data
 
 
-# def find_overlapping_contours(contour_data, annot_data):
-#     """ Get subset of contour data that overlaps with annotation.
+def contour_glass_ceiling(contour_data, annot_data):
+    """ Get subset of contour data that overlaps with annotation.
 
-#     Parameters
-#     ----------
-#     contour_data : DataFrame
-#         Pandas data frame with all contour data.
-#     annot_data : DataFrame
-#         Pandas data frame with all annotation data.
+    Parameters
+    ----------
+    contour_data : DataFrame
+        Pandas data frame with all contour data.
+    annot_data : DataFrame
+        Pandas data frame with all annotation data.
 
-#     Returns
-#     -------
-#     olap_contours : DataFrame
-#         Subset of contour_data that overlaps with annotation.
-#     """
-#     olap_contours = contour_data.copy()
+    Returns
+    -------
+    olap_contours : DataFrame
+        Subset of contour_data that overlaps with annotation.
+    """
+    orig_annot_data = annot_data.copy()
 
-#     c_times, c_freqs, _ = contours_from_contour_data(contour_data)
+    contour_times, contour_freqs, _ = contours_from_contour_data(contour_data)
 
-#     for (times, freqs) in zip(c_times.iterrows(), c_freqs.iterrows()):
-#         row_idx = times[0]
-#         times = times[1].values
-#         freqs = freqs[1].values
+    mel_dat = pd.DataFrame(columns=['time', 'f0', 'annot_dist'])
+    mel_dat['time'] = contour_times.values.ravel()
+    mel_dat['f0'] = contour_freqs.values.ravel()
+    mel_dat['annot_dist'] = -1
 
-#         # remove trailing NaNs
-#         times = times[~np.isnan(times)]
-#         freqs = freqs[~np.isnan(freqs)]
+    mel_dat.dropna(inplace=True)
+    mel_dat = mel_dat[mel_dat['f0'] != 0]
 
-#         # get segment of ground truth matching this contour
-#         gt_segment = annot_data[annot_data['time'] >= times[0]]
-#         gt_segment = gt_segment[gt_segment['Time'] <= times[-1]]
+    annot_times = annot_data['time'].values
+    old_times = mel_dat['time'].values
+    reidx = np.searchsorted(annot_times, old_times)
+    reidx[reidx >= len(annot_times)] = len(annot_times) - 1 
 
-#         # compute metrics
-#         res = mir_eval.melody.evaluate(gt_segment['time'].values,
-#                                        gt_segment['f0'].values, times, freqs)
-#         if res['Raw Pitch Accuracy'] == 0:
-#             olap_contours.drop(row_idx, inplace=True)
+    shift_idx = (np.abs(old_times - annot_times[reidx - 1]) < \
+                 np.abs(old_times - annot_times[reidx]))
+    reidx[shift_idx] = reidx[shift_idx] - 1
+    mel_dat.index = reidx
+    mel_dat['reidx'] = reidx
 
-#     return olap_contours
+    non_zero_annot = np.intersect1d(annot_data[annot_data['f0'] != 0].index, 
+                                    mel_dat.index)
+    mel_dat = mel_dat.loc[non_zero_annot, :]
+
+    mel_dat['annot_dist'] = np.abs(mel_dat['f0'] - 
+                                   annot_data.loc[mel_dat.index, 'f0'])
+
+    mel_dat.sort(columns='annot_dist', inplace=True)
+    mel_dat.sort(columns='time', inplace=True)
+    mel_dat.drop_duplicates(subset='reidx', take_last=False, inplace=True)
+
+    #############################
+    step_size = 128.0/44100.0  # contour time stamp step size
+    mel_time_idx = np.arange(0, np.max(mel_dat['time'].values) + 1, step_size)
+
+    # find index in evenly spaced grid of estimated time values
+    old_times = mel_dat['time'].values
+    reidx = np.searchsorted(mel_time_idx, old_times)
+    shift_idx = (np.abs(old_times - mel_time_idx[reidx - 1]) < \
+                 np.abs(old_times - mel_time_idx[reidx]))
+    reidx[shift_idx] = reidx[shift_idx] - 1
+
+    # find duplicate time values
+    mel_dat['reidx2'] = reidx
+
+    mel_dat.drop_duplicates(subset='reidx', take_last=True, inplace=True)
+
+    mel_output = pd.Series(np.zeros(mel_time_idx.shape), index=mel_time_idx)
+    mel_output.iloc[mel_dat['reidx2']] = mel_dat['f0'].values
+
+    res = mir_eval.melody.evaluate(orig_annot_data['time'].values, 
+                                   orig_annot_data['f0'].values,
+                                   np.array(mel_output.index), 
+                                   mel_output.values)
+
+    return res, mel_output
 
 
 def join_contours(contours_list):
