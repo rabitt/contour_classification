@@ -5,7 +5,7 @@ import numpy as np
 import mir_eval
 
 
-def melody_from_clf(contour_data, prob_thresh=0.5, penalty=0):
+def melody_from_clf(contour_data, prob_thresh=0.5, penalty=0, method='viterbi'):
     """ Compute output melody using classifier output.
 
     Parameters
@@ -25,7 +25,14 @@ def melody_from_clf(contour_data, prob_thresh=0.5, penalty=0):
 
     if len(contour_threshed) == 0:
         print "Warning: no contours above threshold."
-        return None
+        contour_times, _, _ = \
+            cc.contours_from_contour_data(contour_data, n_end=4)
+        step_size = 128.0/44100.0  # contour time stamp step size
+        mel_time_idx = np.arange(0, np.max(contour_times.values.ravel()) + 1,
+                                 step_size)
+        mel_output = pd.Series(np.zeros(mel_time_idx.shape),
+                               index=mel_time_idx)
+        return mel_output
 
     # get separate DataFrames of contour time, frequency, and probability
     contour_times, contour_freqs, _ = \
@@ -72,48 +79,58 @@ def melody_from_clf(contour_data, prob_thresh=0.5, penalty=0):
 
     # find duplicate time values
     mel_dat['reidx'] = reidx
-    duplicates = mel_dat.duplicated(subset='reidx') | \
-                 mel_dat.duplicated(subset='reidx', take_last=True)
 
-    not_duplicates = mel_dat[~duplicates]
+    if method == 'max':
+        print "using max decoding"
+        mel_dat.drop_duplicates(subset='reidx', take_last=True, inplace=True)
 
-    # initialize output melody
-    mel_output = pd.Series(np.zeros(mel_time_idx.shape), index=mel_time_idx)
+        mel_output = pd.Series(np.zeros(mel_time_idx.shape), index=mel_time_idx)
+        mel_output.iloc[mel_dat['reidx']] = mel_dat['f0'].values
 
-    # fill non-duplicate values
-    mel_output.iloc[not_duplicates['reidx']] = not_duplicates['f0'].values
+    else:
+        print "using viterbi decoding"
+        duplicates = mel_dat.duplicated(subset='reidx') | \
+                     mel_dat.duplicated(subset='reidx', take_last=True)
 
-    dups = mel_dat[duplicates]
-    dups['groupnum'] = (dups.loc[:, 'reidx'].diff() > 1).cumsum().copy()
-    groups = dups.groupby('groupnum')
+        not_duplicates = mel_dat[~duplicates]
 
-    for _, group in groups:
-        states = np.unique(group['c_num'])
-        center_freqs = avg_freq.loc[states]
-        times = np.unique(group['reidx'])
+        # initialize output melody
+        mel_output = pd.Series(np.zeros(mel_time_idx.shape), index=mel_time_idx)
 
-        posterior = group[['probability', 'c_num', 'reidx']].pivot_table(
-            'probability', index='reidx',
-            columns='c_num',
-            fill_value=0.0).as_matrix()
+        # fill non-duplicate values
+        mel_output.iloc[not_duplicates['reidx']] = not_duplicates['f0'].values
 
-        f0_vals = group[['f0', 'c_num', 'reidx']].pivot_table(
-            'f0', index='reidx',
-            columns='c_num',
-            fill_value=0.0).as_matrix()
+        dups = mel_dat[duplicates]
+        dups['groupnum'] = (dups.loc[:, 'reidx'].diff() > 1).cumsum().copy()
+        groups = dups.groupby('groupnum')
 
-        #posterior[np.where(f0_vals < prob_thresh)] = 0 #1e-10
+        for _, group in groups:
+            states = np.unique(group['c_num'])
+            center_freqs = avg_freq.loc[states]
+            times = np.unique(group['reidx'])
 
-        # build transition matrix from log distance between center frequency
-        transition_matrix = np.log2(center_freqs.values)[np.newaxis, :] - \
-                            np.log2(center_freqs.values)[:, np.newaxis]
-        transition_matrix = 1 - normalize(np.abs(transition_matrix), axis=1)
-        transition_matrix = normalize(transition_matrix, axis=1)
+            posterior = group[['probability', 'c_num', 'reidx']].pivot_table(
+                'probability', index='reidx',
+                columns='c_num',
+                fill_value=0.0).as_matrix()
 
-        path = viterbi(posterior, transition_matrix=transition_matrix,
-                       prior=None, penalty=penalty)
+            f0_vals = group[['f0', 'c_num', 'reidx']].pivot_table(
+                'f0', index='reidx',
+                columns='c_num',
+                fill_value=0.0).as_matrix()
 
-        mel_output.iloc[times] = f0_vals[np.arange(len(path)), path]
+            #posterior[np.where(f0_vals < prob_thresh)] = 0 #1e-10
+
+            # build transition matrix from log distance between center frequency
+            transition_matrix = np.log2(center_freqs.values)[np.newaxis, :] - \
+                                np.log2(center_freqs.values)[:, np.newaxis]
+            transition_matrix = 1 - normalize(np.abs(transition_matrix), axis=1)
+            transition_matrix = normalize(transition_matrix, axis=1)
+
+            path = viterbi(posterior, transition_matrix=transition_matrix,
+                           prior=None, penalty=penalty)
+
+            mel_output.iloc[times] = f0_vals[np.arange(len(path)), path]
 
     return mel_output
 
