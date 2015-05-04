@@ -250,6 +250,4 @@ def get_best_threshold(y_ref, y_pred_score, plot=True):
         plt.ylabel('F1 score')
         plt.show()
 
-    plot_data = (recall, precision, thresholds, fbeta_scores[:-1])
-
-    return best_threshold, max_fscore, plot_data
+    return best_threshold, max_fscore

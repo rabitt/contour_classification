@@ -157,23 +157,6 @@ def melodiness_metrics(m_train, m_test, y_train, y_test):
     train_scores['accuracy'] = metrics.accuracy_score(y_train, m_bin_train)
     test_scores['accuracy'] = metrics.accuracy_score(y_test, m_bin_test)
 
-    train_scores['mcc'] = metrics.matthews_corrcoef(y_train, m_bin_train)
-    test_scores['mcc'] = metrics.matthews_corrcoef(y_test, m_bin_test)
-
-    (p, r, f, s) = metrics.precision_recall_fscore_support(y_train,
-                                                           m_bin_train)
-    train_scores['precision'] = p
-    train_scores['recall'] = r
-    train_scores['f1'] = f
-    train_scores['support'] = s
-
-    (p, r, f, s) = metrics.precision_recall_fscore_support(y_test,
-                                                           m_bin_test)
-    test_scores['precision'] = p
-    test_scores['recall'] = r
-    test_scores['f1'] = f
-    test_scores['support'] = s
-
     train_scores['confusion matrix'] = \
         metrics.confusion_matrix(y_train, m_bin_train, labels=[0, 1])
     test_scores['confusion matrix'] = \

@@ -13,8 +13,28 @@ import os
 
 from sklearn.externals import joblib
 
+def run_glassceiling_experiment(meltype):
+    # if not os.path.exists(outdir):
+    #     os.mkdir(outdir)
 
-def run_experiments(mel_type, outdir):
+    # Compute Overlap with Annotation
+    with open('melody_trackids.json', 'r') as fhandle:
+        track_list = json.load(fhandle)
+    track_list = track_list['tracks']
+
+    overlap_results = {}
+
+    for track in track_list:
+        print track
+        cdat, adat = eu.get_data_files(track, meltype=meltype)
+        overlap_results[track], _ = \
+            cc.contour_glass_ceiling(cdat, adat)
+
+    return overlap_results
+
+
+
+def run_experiments(mel_type, outdir, olaps='all', decode='viterbi'):
 
     if not os.path.exists(outdir):
         os.mkdir(outdir)
@@ -54,7 +74,7 @@ def run_experiments(mel_type, outdir):
         valid_contour_dict = {k: dset_contour_dict[k] for k in valid_tracks}
         test_contour_dict = {k: dset_contour_dict[k] for k in test_tracks}
 
-        train_annot_dict = {k: dset_annot_dict[k] for k in train_tracks}
+        #train_annot_dict = {k: dset_annot_dict[k] for k in train_tracks}
         valid_annot_dict = {k: dset_annot_dict[k] for k in valid_tracks}
         test_annot_dict = {k: dset_annot_dict[k] for k in test_tracks}
 
@@ -63,7 +83,15 @@ def run_experiments(mel_type, outdir):
         fpath = os.path.join(outdir2, 'olap_stats.csv')
         olap_stats.to_csv(fpath)
 
-        for olap_thresh in np.arange(0, 1, 0.1):
+        if olaps == 'all':
+            olap_list = np.arange(0, 1, 0.1)
+        else:
+            if mel_type == 1:
+                olap_list = [0.5]
+            else:
+                olap_list = [0.4]
+
+        for olap_thresh in olap_list:
             print '='*40
             print "overlap threshold = %s" % olap_thresh
             print '='*40
@@ -87,7 +115,8 @@ def run_experiments(mel_type, outdir):
                                           x_test, y_test, outdir3)
 
             print "computing melody output"
-            melody_output(clf, best_thresh, valid_contour_dict, valid_annot_dict,
+            melody_output(clf, best_thresh, decode,
+                          valid_contour_dict, valid_annot_dict,
                           test_contour_dict, test_annot_dict, outdir3)
 
 
@@ -122,7 +151,7 @@ def multivariate_gaussian(x_train, y_train, x_test, y_test, outdir):
     # Compute various metrics based on melodiness scores.
     melodiness_scores = mv.melodiness_metrics(m_train, m_test, y_train, y_test)
     best_thresh, max_fscore, thresh_plot_data = \
-        eu.get_best_threshold(y_test, m_test)
+        eu.get_best_threshold(y_test, m_test) # THIS SHOULD PROBABLY BE VALIDATION NUMBERS...
 
     # thresh_plot_data = pd.DataFrame(np.array(thresh_plot_data).transpose(),
     #                                 columns=['recall', 'precision',
@@ -188,10 +217,15 @@ def classifier(x_train, y_train, x_valid, y_valid, x_test, y_test, outdir):
     return clf, best_thresh
 
 
-def melody_output(clf, best_thresh, valid_contour_dict, valid_annot_dict,
+def melody_output(clf, best_thresh, decode, 
+                  valid_contour_dict, valid_annot_dict,
                   test_contour_dict, test_annot_dict, outdir):
     """ Generate Melody Output
     """
+
+    # Add predicted melody probabilites to validation set contour data
+    for key in valid_contour_dict.keys():
+        valid_contour_dict[key] = eu.contour_probs(clf, valid_contour_dict[key])
 
     # Add predicted melody probabilites to test set contour data
     for key in test_contour_dict.keys():
@@ -203,15 +237,18 @@ def melody_output(clf, best_thresh, valid_contour_dict, valid_annot_dict,
     meldir = os.path.join(meldir)
 
     # Generate melody output using predictions
-    mel_output_dict = {}
+    print "Generating Validation Melodies"
+    mel_valid_dict = {}
     for key in valid_contour_dict.keys():
-        mel_output_dict[key] = gm.melody_from_clf(valid_contour_dict[key],
-                                                  prob_thresh=best_thresh)
+        print key
+        mel_valid_dict[key] = gm.melody_from_clf(valid_contour_dict[key],
+                                                 prob_thresh=best_thresh,
+                                                 method=decode)
         fpath = os.path.join(meldir, "%s_pred.csv" % key)
-        mel_output_dict[key].to_csv(fpath, header=False, index=True)
+        mel_valid_dict[key].to_csv(fpath, header=False, index=True)
 
     # Score Melody Output
-    mel_scores = gm.score_melodies(mel_output_dict, valid_annot_dict)
+    mel_scores = gm.score_melodies(mel_valid_dict, valid_annot_dict)
 
     overall_scores = \
         pd.DataFrame(columns=['VR', 'VFA', 'RPA', 'RCA', 'OA'],
@@ -234,15 +271,18 @@ def melody_output(clf, best_thresh, valid_contour_dict, valid_annot_dict,
     overall_scores.describe().to_csv(score_summary)
 
     # Generate melody output using predictions
-    mel_output_dict = {}
+    print "Generating Test Melodies"
+    mel_test_dict = {}
     for key in test_contour_dict.keys():
-        mel_output_dict[key] = gm.melody_from_clf(test_contour_dict[key],
-                                                  prob_thresh=best_thresh)
+        print key
+        mel_test_dict[key] = gm.melody_from_clf(test_contour_dict[key],
+                                                prob_thresh=best_thresh,
+                                                method=decode)
         fpath = os.path.join(meldir, "%s_pred.csv" % key)
-        mel_output_dict[key].to_csv(fpath, header=False, index=True)
+        mel_test_dict[key].to_csv(fpath, header=False, index=True)
 
     # Score Melody Output
-    mel_scores = gm.score_melodies(mel_output_dict, test_annot_dict)
+    mel_scores = gm.score_melodies(mel_test_dict, test_annot_dict)
 
     overall_scores = \
         pd.DataFrame(columns=['VR', 'VFA', 'RPA', 'RCA', 'OA'],
