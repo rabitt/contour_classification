@@ -231,7 +231,7 @@ def label_contours(contour_data, olap_thresh):
     return contour_data
 
 
-def contour_glass_ceiling(contour_data, annot_data):
+def contour_glass_ceiling(contour_fpath, annot_fpath):
     """ Get subset of contour data that overlaps with annotation.
 
     Parameters
@@ -246,65 +246,77 @@ def contour_glass_ceiling(contour_data, annot_data):
     olap_contours : DataFrame
         Subset of contour_data that overlaps with annotation.
     """
-    orig_annot_data = annot_data.copy()
+    # indices
+    onset = 2
+    offset = 3
+    duration = 4
+    pitch_mean = 5
+    pitch_std = 6
+    salience_mean = 7
+    salience_std = 8
+    salience_tot = 9
+    vibrato = 10
+    vibrato_rate = 11
+    vibrato_extent = 12
+    vibrato_coverage = 13
+    first_time = 14
 
-    contour_times, contour_freqs, _ = contours_from_contour_data(contour_data)
+    def time_to_index(t):
+        return int(np.round(t * 44100 / 128.))
 
-    mel_dat = pd.DataFrame(columns=['time', 'f0', 'annot_dist'])
-    mel_dat['time'] = contour_times.values.ravel()
-    mel_dat['f0'] = contour_freqs.values.ravel()
-    mel_dat['annot_dist'] = -1
+    ###########################################################################
+    def contours_to_activation(contours, n_times):
 
-    mel_dat.dropna(inplace=True)
-    mel_dat = mel_dat[mel_dat['f0'] != 0]
+        c_last = contours.values[-1]
+        nanind = np.where(np.isnan(c_last))[0]
+        if len(nanind) > 0:
+            nanind = nanind[0]
+            c_last = c_last[:nanind]
+        activation = [[] for x in range(time_to_index(n_times) + 1)]
 
-    annot_times = annot_data['time'].values
-    old_times = mel_dat['time'].values
-    reidx = np.searchsorted(annot_times, old_times)
-    reidx[reidx >= len(annot_times)] = len(annot_times) - 1 
+        for c_num in contours.values:
+            nanind = np.where(np.isnan(c_num))[0]
+            if len(nanind) > 0:
+                nanind = nanind[0]
+                c_num = c_num[first_time:nanind]
+            else:
+                c_num = c_num[first_time:]
+            ind = 0
+            while ind < len(c_num):
+                time_ind = time_to_index(c_num[ind])
+                activation[time_ind].append(c_num[ind+1])
+                ind += 3
 
-    shift_idx = (np.abs(old_times - annot_times[reidx - 1]) < \
-                 np.abs(old_times - annot_times[reidx]))
-    reidx[shift_idx] = reidx[shift_idx] - 1
-    mel_dat.index = reidx
-    mel_dat['reidx'] = reidx
+        return activation
 
-    non_zero_annot = np.intersect1d(annot_data[annot_data['f0'] != 0].index, 
-                                    mel_dat.index)
-    mel_dat = mel_dat.loc[non_zero_annot, :]
+    ###########################################################################
+    def pitch_accuracy(ref, activation):
+        hits = 0
+        misses = 0
+        for rval in ref.values:
+            ind = time_to_index(rval[0])
+            if rval[1] > 0:
+                match = False
+                for v in activation[ind]:
+                    if np.abs(1200*np.log2(v/rval[1])) < 50:
+                        match = True
+                if match:
+                    hits += 1
+                else:
+                    misses += 1
+        return hits / float(hits + misses)
+    ###########################################################################
 
-    mel_dat['annot_dist'] = np.abs(mel_dat['f0'] - 
-                                   annot_data.loc[mel_dat.index, 'f0'])
+    ref = pd.read_csv(annot_fpath,
+                      header=None, index_col=False)
+    contours = pd.read_csv(contour_fpath,
+                           header=None, index_col=False)
+    n_times = len(ref)
+    activation = contours_to_activation(contours, n_times)
+    rpa = pitch_accuracy(ref, activation)
 
-    mel_dat.sort(columns='annot_dist', inplace=True)
-    mel_dat.sort(columns='time', inplace=True)
-    mel_dat.drop_duplicates(subset='reidx', take_last=False, inplace=True)
+    return rpa
 
-    #############################
-    step_size = 128.0/44100.0  # contour time stamp step size
-    mel_time_idx = np.arange(0, np.max(mel_dat['time'].values) + 1, step_size)
-
-    # find index in evenly spaced grid of estimated time values
-    old_times = mel_dat['time'].values
-    reidx = np.searchsorted(mel_time_idx, old_times)
-    shift_idx = (np.abs(old_times - mel_time_idx[reidx - 1]) < \
-                 np.abs(old_times - mel_time_idx[reidx]))
-    reidx[shift_idx] = reidx[shift_idx] - 1
-
-    # find duplicate time values
-    mel_dat['reidx2'] = reidx
-
-    mel_dat.drop_duplicates(subset='reidx', take_last=True, inplace=True)
-
-    mel_output = pd.Series(np.zeros(mel_time_idx.shape), index=mel_time_idx)
-    mel_output.iloc[mel_dat['reidx2']] = mel_dat['f0'].values
-
-    res = mir_eval.melody.evaluate(orig_annot_data['time'].values, 
-                                   orig_annot_data['f0'].values,
-                                   np.array(mel_output.index), 
-                                   mel_output.values)
-
-    return res, mel_output
 
 
 def join_contours(contours_list):
