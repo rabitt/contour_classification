@@ -14,8 +14,21 @@ import os
 from sklearn.externals import joblib
 
 def run_glassceiling_experiment(meltype):
-    # if not os.path.exists(outdir):
-    #     os.mkdir(outdir)
+
+    def get_fpaths(trackid, meltype):
+        contour_suffix = \
+        "MIX_vamp_melodia-contours_melodia-contours_contoursall.csv"
+        contours_path = "melodia_contours"
+        annot_suffix = "MELODY%s.csv" % str(meltype)
+        mel_dir = "MELODY%s" % str(meltype)
+        annot_path = os.path.join(os.environ['MEDLEYDB_PATH'], 'Annotations',
+                                  'Melody_Annotations', mel_dir)
+
+        contour_fname = "%s_%s" % (track, contour_suffix)
+        contour_fpath = os.path.join(contours_path, contour_fname)
+        annot_fname = "%s_%s" % (track, annot_suffix)
+        annot_fpath = os.path.join(annot_path, annot_fname)
+        return contour_fpath, annot_fpath
 
     # Compute Overlap with Annotation
     with open('melody_trackids.json', 'r') as fhandle:
@@ -26,9 +39,9 @@ def run_glassceiling_experiment(meltype):
 
     for track in track_list:
         print track
-        cdat, adat = eu.get_data_files(track, meltype=meltype)
-        overlap_results[track], _ = \
-            cc.contour_glass_ceiling(cdat, adat)
+        cfpath, afpath = get_fpaths(track, meltype=meltype)
+        overlap_results[track] = \
+            cc.contour_glass_ceiling(cfpath, afpath)
 
     return overlap_results
 
@@ -217,7 +230,7 @@ def classifier(x_train, y_train, x_valid, y_valid, x_test, y_test, outdir):
     return clf, best_thresh
 
 
-def melody_output(clf, best_thresh, decode, 
+def melody_output(clf, best_thresh, decode,
                   valid_contour_dict, valid_annot_dict,
                   test_contour_dict, test_annot_dict, outdir):
     """ Generate Melody Output
